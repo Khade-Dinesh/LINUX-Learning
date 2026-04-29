@@ -1,0 +1,33 @@
+# for loop in awk
+awk '{for(i=1;i<=NF;i++) print i,$i}' file.txt
+Loop through all fields in each line — print field number and value
+
+awk '{a[$1]+=$3} END{for(k in a) print k, a[k]}' file
+Sum values by key using array, then loop to print all results
+
+awk 'BEGIN{for(i=1;i<=5;i++) for(j=1;j<=5;j++) printf "%d*%d=%d\t",i,j,i*j; print ""}'
+Pure BEGIN block — generate multiplication table without any input file
+
+# while loop in awk
+awk '{i=1; while(i<=NF){print i,$i; i++}}' file.txt
+While loop — print each field with its position number
+
+# Arrays in awk — very powerful!
+awk '{count[$1]++} END{for(k in count) print k, count[k]}' file
+Count occurrences of each unique value in column 1 — like sort | uniq -c
+
+awk -F, '{sales[$1]+=$2} END{for(r in sales) print r, sales[r]}' sales.csv
+Sum sales by region from CSV — group by and sum like SQL
+
+awk '!seen[$0]++' file.txt
+Remove duplicate lines — classic awk one-liner. seen[] tracks lines already printed
+
+awk '{a[$1]=$2} END{delete a["key"]; for(k in a) print k,a[k]}' file
+Delete specific key from array using delete keyword
+
+Arrays are associative (like dictionaries)
+awk arrays use strings as keys — not just numbers!
+a["dinesh"] = 50000 → works perfectly
+
+a[1] = "hello" → also works
+This makes awk ideal for grouping and counting data.
