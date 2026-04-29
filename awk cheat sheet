@@ -1,0 +1,59 @@
+#awk complete cheat sheet
+
+awk '{print $1}'
+Print first field
+
+awk '{print $NF}'
+Print last field
+
+awk -F: '{print $1}'
+Use : as delimiter
+
+awk 'NR==5'
+Print line 5 only
+
+awk 'NR>1'
+Skip header line
+
+awk '/pattern/'
+Print matching lines
+
+awk '$3>100'
+Filter by column value
+
+awk '$2~/regex/'
+Regex match on field 2
+
+awk '{sum+=$3} END{print sum}'
+Sum column 3
+
+awk 'END{print NR}'
+Count total lines
+
+awk '{count[$1]++} END{...}'
+Count by group
+
+awk '!seen[$0]++'
+Remove duplicates
+
+awk -v var=val
+Pass shell variable
+
+awk -f script.awk
+Run awk script file
+
+awk '{gsub(/x/,"y"); print}'
+Replace all x with y
+
+awk 'BEGIN{OFS=","}'
+Set output separator
+
+awk '{print NR, $0}'
+Add line numbers
+
+awk 'NR%2==0'
+Print even lines only
+Three most powerful one-liners
+awk '!seen[$0]++' file → remove duplicates
+awk '{sum+=$3} END{print sum}' → sum a column
+awk '{c[$1]++} END{for(k in c) print k,c[k]}' → count by group
