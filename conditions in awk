@@ -1,0 +1,32 @@
+if / else conditions in awk
+awk '{if($3>50000) print $1,"SENIOR"; else print $1,"JUNIOR"}' emp.txt
+Label employees as SENIOR or JUNIOR based on salary column
+
+awk '{if($3>80) print "A"; else if($3>60) print "B"; else print "C"}' scores.txt
+Grade students — A/B/C based on score in column 3
+
+awk '{status=($3>0)?"UP":"DOWN"; print $1, status}' servers.txt
+Ternary operator — one-line if/else for server status check
+
+awk '$3>1000 && $4=="active" {print $1}' users.txt
+AND condition — print only active users with more than 1000 points
+
+awk '$2=="admin" || $2=="root" {print $1,$2}' users.txt
+OR condition — print admin or root users
+Pattern matching with conditions
+
+awk 'NF > 0 {print}' file.txt
+Skip empty lines — NF=0 means no fields = empty line
+
+awk 'NR==1 || NR==FNR {print}' file.txt
+Print only first and last line of file
+
+awk 'NR%2==0 {print}' file.txt
+Print only even-numbered lines. NR%2==1 for odd lines
+Pattern vs if — when to use which?
+
+Pattern (outside braces) → simpler, faster:
+awk '$3>1000 {print}' file
+
+if (inside braces) → more complex logic needed:
+awk '{if($3>1000){print "high"} else {print "low"}}' file
