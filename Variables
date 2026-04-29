@@ -1,0 +1,70 @@
+## Variables
+
+Built-in variables — the heart of awk
+
+$0
+ENTIRE LINE
+The complete current line being processed
+awk '{print $0}' file → prints all lines
+
+$1 $2 $N
+FIELD NUMBER
+Individual field values. $1=first, $2=second, and so on
+awk '{print $1}' file → first column
+
+NF
+NUMBER OF FIELDS
+Total fields in current line. $NF = last field always
+awk '{print $NF}' file → last column
+
+NR
+NUMBER OF RECORDS
+Current line number being processed (starts at 1)
+awk '{print NR, $0}' file → add line numbers
+
+FS
+FIELD SEPARATOR
+Input delimiter. Default=whitespace. Same as -F flag
+awk 'BEGIN{FS=":"}{print $1}' /etc/passwd
+
+OFS
+OUTPUT FIELD SEP
+Separator between fields in print output. Default=space
+awk 'BEGIN{OFS=","}{print $1,$2}' file
+
+RS
+RECORD SEPARATOR
+Input record separator. Default=newline. Change to process multi-line records
+awk 'BEGIN{RS=","}{print $0}' file
+
+ORS
+OUTPUT RECORD SEP
+Separator after each print statement. Default=newline
+awk 'BEGIN{ORS="\n---\n"}{print}' file
+
+FNR
+FILE RECORD NUMBER
+Line number within current file. Resets to 1 for each file. NR keeps counting across files
+awk '{print FNR, $0}' file1 file2
+
+FILENAME
+CURRENT FILE
+Name of the file currently being processed
+awk '{print FILENAME, $0}' *.log
+
+ARGC ARGV
+ARGUMENT COUNT/LIST
+Number of args and array of argument values
+awk 'BEGIN{print ARGC}' file
+
+myvar
+USER VARIABLE
+You can create your own variables. No declaration needed. Starts as 0 or ""
+awk '{sum+=$3} END{print sum}' file
+
+Most used variables — memorize these
+$1 $2 $NF → field values
+NR → line number
+NF → number of fields
+FS → input delimiter (or use -F flag)
+OFS → output delimiter
