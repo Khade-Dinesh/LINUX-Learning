@@ -1,0 +1,50 @@
+Field extraction
+awk '{print $1}' file.txt
+
+Print only the first column of every line
+awk '{print $1, $3, $NF}' file.txt
+
+Print columns 1, 3, and last column
+awk -F: '{print $1}' /etc/passwd
+
+Use : as delimiter — print usernames from passwd file
+awk -F, '{print $2, $4}' data.csv
+
+Process CSV file — print 2nd and 4th columns
+awk 'BEGIN{OFS=","} {print $1,$2,$3}' file
+
+Print columns separated by comma — convert to CSV
+awk '{print NR, $0}' file.txt
+
+Add line numbers to every line — like cat -n
+Filtering rows
+awk '/error/ {print $0}' app.log
+
+Print only lines containing "error" — like grep but more powerful
+awk '$3 > 1000 {print $1, $3}' file.txt
+
+Print name and value only where column 3 is greater than 1000
+awk 'NR==5 {print}' file.txt
+
+Print only line 5 — like sed -n '5p'
+awk 'NR>=10 && NR<=20 {print}' file.txt
+
+Print lines 10 to 20 only
+awk '$2 ~ /^admin/ {print $1,$2}' users.txt
+
+Match regex on field 2 only — print users whose role starts with admin
+awk '$1 !~ /^#/ {print}' config.conf
+
+Skip comment lines — print only non-comment lines from config
+Calculations & math
+awk '{sum+=$3} END{print "Total:", sum}' file
+
+Sum all values in column 3 — total sales, bytes, counts
+awk '{sum+=$3} END{print "Avg:", sum/NR}' file
+
+Calculate average of column 3 across all lines
+awk 'BEGIN{max=0} $3>max{max=$3} END{print "Max:", max}' file
+Find maximum value in column 3
+
+awk '/error/{count++} END{print count}' app.log
+Count total error lines — like grep -c but with more control
