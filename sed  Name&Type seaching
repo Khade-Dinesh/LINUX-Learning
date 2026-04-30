@@ -1,0 +1,50 @@
+# Searching by name
+find /etc -name "nginx.conf"
+Find exact filename match. Case-SENSITIVE! nginx.conf ≠ Nginx.conf. Full name must match.
+
+find /etc -iname "nginx.conf"
+Case-INSENSITIVE match. -i prefix = ignore case. Matches nginx.conf, Nginx.conf, NGINX.CONF all at once!
+
+find /var/log -name "*.log"
+Wildcard: * = any characters. Find ALL .log files. ALWAYS quote the pattern — prevents shell expansion!
+
+find . -name "app?.log"
+? = exactly ONE character wildcard. Matches app1.log, app2.log, appA.log. NOT app10.log (two chars).
+
+find . -name "app[123].log"
+[ ] = character class. Matches app1.log, app2.log, app3.log ONLY. Like regex character class!
+
+find . -not -name "*.log"
+NOT operator — exclude files matching pattern. Find everything EXCEPT .log files. Same as: find . ! -name "*.log"
+
+find / -path "*/nginx/*.conf"
+-path matches FULL PATH including directories. Find .conf files inside any nginx directory anywhere. More powerful than -name!
+
+find . -regex ".*\.\(log\|txt\)$"
+Use REGEX pattern for matching! -regex matches full path. -iregex = case insensitive. More powerful than -name wildcards!
+
+# Searching by type
+-type f
+Regular FILES only. Most common! Excludes directories, symlinks, devices. Always specify -type f when searching for files!
+find /var -type f -name "*.log"
+
+-type d
+DIRECTORIES only. Find all directories matching criteria. Great for setting directory permissions separately from files.
+
+find /var/www -type d
+
+-type l
+SYMBOLIC LINKS only. Find all symlinks. Combine with -xtype l to find BROKEN symlinks (target doesn't exist)!
+find /etc -type l
+
+-xtype l
+BROKEN symlinks — type of what is pointed to. If target gone, xtype = l (symlink). Essential for finding dangling symlinks!
+find /etc -xtype l → broken symlinks
+
+-type b / -type c
+Block/character DEVICE files. Disks (/dev/sda), terminals (/dev/tty). Useful for security audits — devices outside /dev are suspicious!
+
+find / -type b -not -path "/dev/*"
+-type p / -type s
+Named PIPES (p) and SOCKETS (s). Processes communicate through these. Docker and apps create socket files.
+find /tmp -type s → socket files
