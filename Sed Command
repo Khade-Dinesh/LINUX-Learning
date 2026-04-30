@@ -1,0 +1,16 @@
+What is find?
+Definition and power
+find is a command-line utility that searches for files and directories in a directory tree based on criteria you define — name, type, size, permissions, ownership, timestamps, and more. It then optionally performs actions on matching files.
+
+find is NOT just searching — it's a complete file processing engine! You can find files AND delete, compress, change permissions, or run any command on them!
+How find works
+find starts at a given path (starting point) and recursively traverses every file and directory in the tree. For each file it encounters, it evaluates your expression (tests + actions). If all tests pass → the action is performed (default action = print filename).
+
+find reads the filesystem directly — it doesn't use a database like locate does. More accurate but slower on huge trees.
+find syntax
+find [path] [options] [expression]
+
+find /path/to/start -name "*.log" -type f -action
+↑ ↑ ↑ ↑ ↑
+command where to test: name test: type what to do
+start pattern (file) (default=print)
