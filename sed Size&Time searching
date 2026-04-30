@@ -1,0 +1,43 @@
+# Searching by file size
+Size units in find
+c = bytes, k = kilobytes (1024), M = megabytes, G = gigabytes
++ means greater than, - means less than, no prefix means EXACTLY
+
+find /var -size +100M
+Find files LARGER than 100MB. + = greater than. Critical for finding disk space hogs! Replace 100M with any size.
+
+find /var/log -size -1k
+Find files SMALLER than 1KB. - = less than. Find empty or tiny log files that may indicate issues.
+
+find /tmp -size 0
+Find EMPTY files (exactly 0 bytes). No + or - = exact match. Clean up empty files: find /tmp -size 0 -delete
+
+find /var -size +10M -size -500M
+Find files BETWEEN 10MB and 500MB. Combine -size options — implicit AND! Find medium-large files.
+
+find / -type f -size +100M -exec ls -lh {} \; 2>/dev/null | sort -k5 -rh
+Find all files >100MB with sizes, sorted largest first. Best way to find what's eating disk space!
+
+
+# Searching by time — atime, mtime, ctime
+-mtime = modification time (content changed)
+-atime = access time (file read)
+-ctime = change time (permissions/ownership changed)
+
+N = exactly N days ago, +N = more than N days ago, -N = less than N days ago
+-mmin, -amin, -cmin = same but in MINUTES (more precise!)
+
+find /var/log -mtime +30
+Files NOT modified in last 30 days. +30 = older than 30 days. Perfect for log cleanup! Safe to archive or delete.
+
+find /opt/myapp -mtime -1
+Files modified in last 24 hours. -1 = less than 1 day old. Find recently changed files — useful after deployments!
+
+find /tmp -mmin -60
+Files modified in last 60 MINUTES. -mmin = modification time in minutes. More precise than -mtime (days)!
+
+find /etc -newer /etc/nginx/nginx.conf
+Find files NEWER than reference file. Relative time comparison — files changed after nginx.conf was modified. Useful after config changes!
+
+find /var/log -mtime 0
+Files modified TODAY (within last 24h). mtime=0 = less than 1 day ago. Quick check of today's changed files!
