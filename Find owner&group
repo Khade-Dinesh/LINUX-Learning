@@ -1,0 +1,18 @@
+#Searching by owner and group
+find /home -user dinesh
+Find files owned by user "dinesh". Use username OR UID number. Great for auditing what a specific user owns!
+
+find / -uid 1001 2>/dev/null
+Find by UID number instead of username. Useful when user is deleted — username gone but UID may remain on files!
+
+find /var/www -group www-data
+Find files belonging to group "www-data". Check web server file ownership — should be www-data group!
+
+find / -nouser 2>/dev/null
+Find files with NO valid owner (user deleted but files remain). Orphaned files — security risk! Shows just UID number instead of name.
+
+find / -nogroup 2>/dev/null
+Find files with NO valid group. Group was deleted but files remain. Clean up or reassign these!
+
+find / -user root -perm -4000 -type f 2>/dev/null
+Find SUID files owned by ROOT. These run with root privileges when executed! Should be a very short known list. Security critical!
