@@ -1,0 +1,76 @@
+# Day 03 - Text Processing (cut, sort) - DevOps Learning
+
+---
+
+## 🔹 cut Command
+
+# Extract column (space-separated)
+cut -d " " -f1 file.txt
+
+# Extract multiple fields
+cut -d " " -f1,3 file.txt
+
+# Extract by character position
+cut -c1-5 file.txt
+
+---
+
+## 🔹 sort Command
+
+# Default sort (alphabetical)
+sort file.txt
+
+# Numeric sort
+sort -n file.txt
+
+# Reverse sort
+sort -r file.txt
+
+# Sort by column
+sort -k2 file.txt
+
+# Sort by column numeric
+sort -k2 -n file.txt
+
+# Case insensitive sort
+sort -f file.txt
+
+---
+
+## 🔹 Important Concepts
+
+- sort works line by line (not column-aware by default)
+- use -k to specify column
+- use -n for numbers
+- use -f to ignore case
+
+---
+
+## 🔹 Practical Examples
+
+# Sort by second column (age)
+sort -k2 -n data.txt
+
+# Sort by name ignoring case
+sort -k1 -f data.txt
+
+---
+
+## 🔥 DevOps Use Cases
+
+- Parsing logs
+- Extracting specific fields from files
+- Sorting large datasets
+- Preparing structured outputs for automation
+
+---
+
+## 💡 Key Takeaways
+
+- cut is used for extracting data
+- sort is used for organizing data
+- Both are heavily used in log analysis
+- Combined with pipes → very powerful
+
+Example:
+cat log.txt | cut -d " " -f1 | sort | uniq
