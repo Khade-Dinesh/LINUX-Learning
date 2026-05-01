@@ -1,0 +1,80 @@
+# Day 03 - Linux Redirections & Pipes (DevOps Learning)
+
+## 🔹 Standard Streams
+0 → STDIN  (input)
+1 → STDOUT (output)
+2 → STDERR (error)
+
+---
+
+## 🔹 Output Redirection
+
+# Overwrite file
+command > file.txt
+
+# Append output
+command >> file.txt
+
+---
+
+## 🔹 Input Redirection
+
+command < file.txt
+
+---
+
+## 🔹 Error Redirection
+
+# Redirect only errors
+command 2> error.txt
+
+# Append errors
+command 2>> error.txt
+
+---
+
+## 🔹 Combine Output + Error
+
+# Redirect both stdout and stderr
+command > file.txt 2>&1
+
+# OR (shortcut)
+command &> file.txt
+
+---
+
+## 🔹 Pipes (|)
+
+# Pass output of one command to another
+command1 | command2
+
+Example:
+cat file.txt | grep "error"
+
+---
+
+## 🔹 tee Command
+
+# Save output + display on terminal
+command | tee file.txt
+
+# Append mode
+command | tee -a file.txt
+
+---
+
+## 🔥 DevOps Use Cases
+
+- Logging output and errors separately
+- Debugging scripts using stderr
+- Saving logs while monitoring in real-time
+- Building pipelines for automation
+
+---
+
+## 💡 Key Takeaways
+
+- Redirection controls where data goes
+- Pipes connect commands → core of automation
+- tee is useful for debugging pipelines
+- stderr handling is critical in production scripts
