@@ -1,0 +1,163 @@
+Linux Text Processing Commands Cheat Sheet
+
+This guide covers essential Unix/Linux commands for text processing and file handling: cut, uniq, wc, tr, xargs, tail, head, less, and more.
+
+---
+
+cut — Extract Sections of Text
+
+Used to extract specific columns or fields from a file.
+
+Syntax:
+cut [OPTION]... [FILE]
+
+Examples:
+cut -d "," -f1 file.csv     # Extract first column (comma-separated)
+cut -c1-5 file.txt          # Extract first 5 characters
+
+Common Options:
+-d → delimiter
+-f → field number
+-c → character position
+
+---
+
+uniq — Remove Duplicate Lines
+
+Filters out repeated lines (requires sorted input for best results).
+
+Syntax:
+uniq [OPTION]... [FILE]
+
+Examples:
+uniq file.txt               # Remove consecutive duplicates
+sort file.txt | uniq        # Remove all duplicates
+uniq -c file.txt            # Count occurrences
+
+Common Options:
+-c → count occurrences
+-d → show duplicates only
+-u → show unique lines only
+
+---
+
+wc — Word Count
+
+Counts lines, words, and characters.
+
+Syntax:
+wc [OPTION]... [FILE]
+
+Examples:
+wc file.txt         # Lines, words, bytes
+wc -l file.txt      # Count lines
+wc -w file.txt      # Count words
+wc -c file.txt      # Count bytes
+
+---
+
+tr — Translate or Delete Characters
+
+Used to replace or remove characters.
+
+Syntax:
+tr [OPTION] SET1 [SET2]
+
+Examples:
+echo "hello" | tr a-z A-Z        # Convert to uppercase
+echo "hello123" | tr -d 0-9      # Remove digits
+
+Common Options:
+-d → delete characters
+-s → squeeze repeated characters
+
+---
+
+xargs — Build Argument Lists
+
+Takes input and passes it as arguments to another command.
+
+Syntax:
+xargs [OPTION]... COMMAND
+
+Examples:
+cat file.txt | xargs rm          # Remove files listed in file.txt
+find . -name "*.txt" | xargs wc  # Count words in found files
+
+Common Options:
+-n → max arguments per command
+-I {} → replace placeholder
+
+---
+
+tail — View End of File
+
+Displays the last part of a file.
+
+Syntax:
+tail [OPTION]... [FILE]
+
+Examples:
+tail file.txt         # Last 10 lines
+tail -n 20 file.txt   # Last 20 lines
+tail -f logfile.log   # Follow live updates
+
+---
+
+head — View Start of File
+
+Displays the first part of a file.
+
+Syntax:
+head [OPTION]... [FILE]
+
+Examples:
+head file.txt         # First 10 lines
+head -n 5 file.txt    # First 5 lines
+
+---
+
+less — View File Interactively
+
+Allows scrolling forward and backward through a file.
+
+Syntax:
+less file.txt
+
+Features:
+
+* Scroll up/down
+* Search using /keyword
+* Quit with q
+
+---
+
+more — Basic File Viewer
+
+Simpler version of less, only scrolls forward.
+
+Syntax:
+more file.txt
+
+Features:
+
+* Press Space → next page
+* Press Enter → next line
+* Quit with q
+
+---
+
+Tips:
+
+* Combine commands with pipes (|) for powerful workflows
+* Use man <command> to read full documentation
+
+---
+
+Example Pipeline:
+cat data.txt | cut -d "," -f1 | sort | uniq -c | sort -nr
+
+Explanation:
+Extract first column → sort → count duplicates → sort by frequency
+
+---
