@@ -1,0 +1,195 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 05
+   Topic: Linux User Management & Group Management
+===============================================================
+
+Author   : Dinesh
+Day      : 05 / 120
+Topic    : Linux Users & Groups Management
+Platform : Linux (Ubuntu / RHEL based)
+
+---------------------------------------------------------------
+1. TYPES OF USERS IN LINUX
+---------------------------------------------------------------
+
++----------------+------------+--------------------------------+
+| User Type      | UID Range  | Description                    |
++----------------+------------+--------------------------------+
+| Root User      | 0          | Full system privileges         |
+| System Users   | 1 - 999    | Service accounts, no login     |
+| Regular Users  | 1000+      | Human users (e.g., dinesh)     |
++----------------+------------+--------------------------------+
+
+Important Files:
+  /etc/passwd  --> Stores username, UID, home dir, shell
+                   [x] in password field = password is in shadow
+  /etc/shadow  --> Stores actual hashed passwords (root only)
+
+---------------------------------------------------------------
+2. USER MANAGEMENT COMMANDS
+---------------------------------------------------------------
+
+ADD USER:
+  useradd username
+
+SET PASSWORD:
+  passwd username
+
+DELETE USER:
+  userdel username
+  userdel -r username        # Also removes home directory
+
+INTERACTIVE USER CREATION (Debian/Ubuntu only):
+  adduser username           # Asks questions step by step
+
+VIEW ALL USERS:
+  getent passwd
+
+---------------------------------------------------------------
+3. USER MODIFICATION — usermod FLAGS
+---------------------------------------------------------------
+
+FLAG        USAGE                              NOTES
+-d -m       Change home dir & move data        See struggle note below
+-l          Rename username                    Does NOT rename home dir
+-c          Add comment (full name, address)
+-u          Change UID
+-g          Change primary group               Only 1 primary group allowed
+-aG         Add to secondary group             Always use -aG (append)
+-G          Assign secondary group             WARNING: Removes from all other groups!
+-e          Set account expiry (YYYY-MM-DD)
+-L          Lock user account                  Adds ! in /etc/shadow
+-U          Unlock user account                Only root can lock/unlock
+-s          Set user shell                     /sbin/nologin = disable login
+-r          Create system account
+
+
+EXAMPLES:
+  usermod -d /new/path/username -m username      # Change home dir
+  usermod -l newname oldname                     # Rename user
+  usermod -aG groupname username                 # Add to secondary group
+  usermod -L username                            # Lock account
+  usermod -U username                            # Unlock account
+  usermod -s /sbin/nologin username              # Disable login shell
+  usermod -e 2025-12-31 username                 # Set expiry date
+  usermod -c "Full Name" username                # Add comment
+
+---------------------------------------------------------------
+4. HANDS-ON STRUGGLE & FIX (Real Learning!)
+---------------------------------------------------------------
+
+PROBLEM:
+  I created a user with a home directory, then tried to change
+  the home directory using:
+
+    usermod -d /new-dir/username -m username
+
+  Result --> /etc/passwd showed the new path correctly BUT
+             the new directory had no user subfolder inside
+             and no data was moved anywhere.
+
+ROOT CAUSE:
+  The target directory must already exist before running
+  the usermod command. The -m flag only MOVES data,
+  it does not CREATE the destination directory.
+
+FIX — Method 1 (Recommended):
+  Step 1: mkdir -p /new-dir/username
+  Step 2: usermod -d /new-dir/username -m username
+
+FIX — Method 2 (Manual):
+  Step 1: mkdir -p /new-dir/username
+  Step 2: chown username:groupname /new-dir/username
+  Step 3: cp -r /old-home/* /new-dir/username/
+
+---------------------------------------------------------------
+5. SECURITY LEARNING — Lock / Shell Disable
+---------------------------------------------------------------
+
+LOCK ACCOUNT:
+  usermod -L username
+  --> Adds ! before hashed password in /etc/shadow
+  --> Linux still prompts for password on login (security behavior)
+  --> Correct password is REJECTED due to lock
+  --> sudo users can still switch to the account (no password needed)
+  --> Very useful during security breach — instant account lock!
+
+UNLOCK ACCOUNT:
+  usermod -U username
+  --> Only root user can lock/unlock
+
+DISABLE LOGIN SHELL:
+  usermod -s /sbin/nologin username
+  --> Nobody can login to this account via terminal
+  --> Powerful Linux security practice for service accounts
+
+---------------------------------------------------------------
+6. GROUP MANAGEMENT
+---------------------------------------------------------------
+
+Important File:
+  /etc/group  --> Stores group name, password(x), GID, members
+
+TYPES OF GROUPS:
+  Primary Group   --> Default group of user
+                      Files created by user are owned by this group
+  Secondary Group --> Additional groups for extra access permissions
+                      A user can belong to many secondary groups
+
+GROUP COMMANDS:
+
+  groupadd groupname              # Add new group
+  groupadd -g 1500 groupname      # Add group with custom GID
+  groupadd -r groupname           # Create system group (GID < 1000)
+  groupmod -n newname oldname     # Rename group
+  groupmod -g new-gid groupname   # Change GID
+  groupdel groupname              # Delete group
+
+  WARNING: Cannot delete a user's primary group directly.
+           Use: sudo groupdel -f groupname  (force delete)
+
+---------------------------------------------------------------
+7. GROUP MEMBERSHIP — gpasswd
+---------------------------------------------------------------
+
+  gpasswd -a username groupname            # Add user to group
+  gpasswd -d username groupname            # Remove user from group
+  gpasswd -M user1,user2,user3 groupname   # Add multiple users at once
+
+---------------------------------------------------------------
+8. USEFUL UTILITY COMMANDS
+---------------------------------------------------------------
+
+  COMMAND                  PURPOSE
+  ----------------------   ------------------------------------
+  id username              Show UID, GID, primary & secondary groups
+  who                      Show currently logged-in users
+  w                        Detailed logged-in user info
+  groups username          Show all groups a user belongs to
+  getent passwd            View all users (/etc/passwd entries)
+  getent group             View all groups (/etc/group entries)
+
+---------------------------------------------------------------
+9. KEY TAKEAWAYS FROM DAY 05
+---------------------------------------------------------------
+
+  [1] Always use -aG (not just -G) when adding to secondary groups.
+      -G alone removes user from all other groups!
+
+  [2] Create the target directory BEFORE changing home dir with usermod.
+
+  [3] Locking an account (-L) adds ! in /etc/shadow.
+      Linux still asks for password but rejects it. sudo users unaffected.
+
+  [4] /sbin/nologin shell is a simple but powerful security measure.
+
+  [5] /etc/group is the correct file (NOT /etc/groups).
+
+  [6] adduser (Debian/Ubuntu) is interactive. useradd is universal.
+
+  [7] gpasswd -M replaces ALL members — use carefully!
+
+===============================================================
+   Day 05 Complete! On to Day 06 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
