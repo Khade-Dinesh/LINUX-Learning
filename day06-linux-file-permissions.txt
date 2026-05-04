@@ -1,0 +1,558 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 06
+   Topic: Linux File Permissions & Ownership — Deep Dive
+===============================================================
+
+Author   : Dinesh
+Day      : 06 / 120
+Topic    : Linux File Permissions, Ownership & Special Permissions
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  What Are File Permissions?
+  2.  Three Permission Entities (u, g, o, a)
+  3.  Reading ls -l Output
+  4.  File Type Characters
+  5.  How the Kernel Checks Permissions
+  6.  Why Permissions Matter for DevOps
+  7.  chmod — Change Permissions
+  8.  Octal (Numeric) Permission System
+  9.  Symbolic Permission System
+  10. chown — Change Ownership
+  11. chgrp — Change Group Ownership
+  12. umask — Default Permission Mask
+  13. Special Permissions (SUID, SGID, Sticky Bit)
+  14. The 4-Digit Octal System
+  15. Viewing & Verifying Permissions
+  16. Real-World DevOps Permission Examples
+  17. Key Takeaways
+
+---------------------------------------------------------------
+1. WHAT ARE FILE PERMISSIONS?
+---------------------------------------------------------------
+
+Definition:
+  File permissions control WHO can do WHAT with a file or
+  directory. Every file in Linux has an owner (user), a group,
+  and a set of permission bits. The kernel checks these bits
+  every time any process tries to access a file.
+
+  Linux uses a Discretionary Access Control (DAC) model —
+  the owner of a file decides who can access it.
+
+Permission Types:
+  r = read    (value: 4)  --> View file content / list directory
+  w = write   (value: 2)  --> Modify file / create & delete in dir
+  x = execute (value: 1)  --> Run file as program / enter directory
+  - = no permission (0)
+
+---------------------------------------------------------------
+2. THREE PERMISSION ENTITIES
+---------------------------------------------------------------
+
+  u = Owner  --> The user who owns the file (usually the creator)
+                 Has their own set of rwx bits.
+
+  g = Group  --> The group that owns the file.
+                 All members of this group share group permissions.
+
+  o = Others --> Everyone else. Any user who is neither the owner
+                 nor in the owning group. (World permissions)
+
+  a = All    --> Shortcut for owner + group + others combined.
+
+---------------------------------------------------------------
+3. READING ls -l OUTPUT
+---------------------------------------------------------------
+
+  Example:
+  -rwxr-xr-- 1 dinesh devops 4096 Apr 4 2026 script.sh
+
+  POSITION    VALUE     MEANING
+  --------    -----     -------
+  Char 1      -         File type (- = regular file)
+  Char 2-4    rwx       Owner permissions  (read+write+execute)
+  Char 5-7    r-x       Group permissions  (read+execute only)
+  Char 8-10   r--       Others permissions (read only)
+  Field 2     1         Number of hard links
+  Field 3     dinesh    Owner (user)
+  Field 4     devops    Group
+  Field 5     4096      File size in bytes
+  Field 6-8   Apr 4...  Last modified date & time
+  Field 9     script.sh File name
+
+  Breaking down permissions visually:
+  - | r w x | r - x | r - -
+    |       |       |
+    | OWNER | GROUP | OTHERS
+    | (7)   | (5)   | (4)
+
+---------------------------------------------------------------
+4. FILE TYPE CHARACTERS (First Character)
+---------------------------------------------------------------
+
+  CHARACTER   TYPE
+  ---------   ----
+  -           Regular file
+  d           Directory
+  l           Symbolic link (symlink)
+  c           Character device (terminal, serial port)
+  b           Block device (disk, USB)
+  p           Named pipe (FIFO)
+  s           Socket file
+
+---------------------------------------------------------------
+5. HOW THE KERNEL CHECKS PERMISSIONS — ORDER MATTERS!
+---------------------------------------------------------------
+
+  The kernel checks permissions in this EXACT order:
+
+  Step 1: Is the process the file OWNER?
+          --> YES: Apply OWNER bits. STOP here.
+
+  Step 2: Is the process in the file's GROUP?
+          --> YES: Apply GROUP bits. STOP here.
+
+  Step 3: Neither owner nor group?
+          --> Apply OTHERS bits.
+
+  CRITICAL RULE:
+  The kernel stops at the FIRST match!
+  Even if owner bits are MORE restrictive than group bits —
+  the owner gets OWNER bits, NOT group bits.
+  The owner is NEVER checked against group permissions!
+
+  Example:
+  File: ----rwxrwx (owner=dinesh, group=devops)
+  If dinesh tries to access --> owner bits apply --> NO access!
+  Even though group has full rwx, dinesh gets owner bits (---).
+
+---------------------------------------------------------------
+6. WHY PERMISSIONS MATTER FOR DEVOPS
+---------------------------------------------------------------
+
+  Wrong permissions = Security vulnerability OR broken app!
+
+  SCENARIO                          CONSEQUENCE
+  --------                          -----------
+  Config file world-readable        Passwords/secrets exposed!
+  Script not executable             Deployment pipeline fails!
+  Web directory wrong owner         403 Forbidden error!
+  SSH key wrong permissions         SSH refuses to connect!
+  Database file wrong group         App cannot read/write DB!
+
+  chmod and chown are used in EVERY real deployment script!
+
+---------------------------------------------------------------
+7. chmod — CHANGE FILE PERMISSIONS
+---------------------------------------------------------------
+
+  Syntax:
+    chmod [options] mode filename
+
+  Options:
+    -R    Recursive (apply to directory and all contents)
+    -v    Verbose (show what is being changed)
+
+  TWO WAYS TO USE chmod:
+  A) Octal (Numeric) Method
+  B) Symbolic Method
+
+---------------------------------------------------------------
+8. OCTAL (NUMERIC) PERMISSION SYSTEM
+---------------------------------------------------------------
+
+  Each permission set = sum of values:
+    r = 4
+    w = 2
+    x = 1
+    - = 0
+
+  PERMISSION    BINARY    OCTAL
+  ----------    ------    -----
+  ---           000       0
+  --x           001       1
+  -w-           010       2
+  -wx           011       3
+  r--           100       4
+  r-x           101       5
+  rw-           110       6
+  rwx           111       7
+
+  Examples:
+    chmod 755 script.sh     --> rwxr-xr-x  (owner=7, group=5, others=5)
+    chmod 644 file.txt      --> rw-r--r--  (owner=6, group=4, others=4)
+    chmod 600 secret.key    --> rw-------  (owner=6, group=0, others=0)
+    chmod 777 shared.sh     --> rwxrwxrwx  (full access to all - AVOID!)
+    chmod 400 id_rsa        --> r--------  (SSH private key - read only!)
+    chmod 000 file.txt      --> ---------  (no permissions at all)
+    chmod -R 755 /var/www/  --> Apply recursively to web directory
+
+  Common Permission Patterns:
+    755  -->  Standard for executables and directories
+    644  -->  Standard for regular files (config, text)
+    600  -->  Private files (SSH keys, secrets)
+    700  -->  Private executables (personal scripts)
+    400  -->  Read-only sensitive files
+    777  -->  DANGEROUS! Avoid in production!
+
+---------------------------------------------------------------
+9. SYMBOLIC PERMISSION SYSTEM
+---------------------------------------------------------------
+
+  Syntax:  chmod [who][operator][permission] filename
+
+  WHO:
+    u = owner
+    g = group
+    o = others
+    a = all (u+g+o)
+
+  OPERATOR:
+    + = add permission
+    - = remove permission
+    = = set exactly (removes others)
+
+  PERMISSION:
+    r, w, x
+
+  Examples:
+    chmod u+x script.sh       --> Add execute for owner
+    chmod g-w file.txt        --> Remove write from group
+    chmod o-rwx secret.txt    --> Remove all from others
+    chmod a+r file.txt        --> Add read for everyone
+    chmod u+x,g-w file.txt    --> Multiple changes at once
+    chmod u=rwx,g=rx,o= file  --> Set exact permissions
+    chmod +x deploy.sh        --> Add execute for all (shorthand)
+    chmod -R a-x directory/   --> Remove execute recursively
+
+---------------------------------------------------------------
+10. chown — CHANGE OWNERSHIP
+---------------------------------------------------------------
+
+  Syntax:
+    chown [options] owner[:group] filename
+
+  Options:
+    -R    Recursive
+    -v    Verbose
+
+  Examples:
+    chown dinesh file.txt           --> Change owner to dinesh
+    chown dinesh:devops file.txt    --> Change owner AND group
+    chown :devops file.txt          --> Change group only
+    chown -R dinesh /home/dinesh/   --> Recursive ownership change
+    chown root:root /etc/passwd     --> Set to root owner and group
+    chown --reference=ref.txt f.txt --> Copy ownership from ref file
+
+  NOTE: Only root can change file ownership.
+        Regular users can only change their own file's group
+        (and only to a group they belong to).
+
+---------------------------------------------------------------
+11. chgrp — CHANGE GROUP OWNERSHIP
+---------------------------------------------------------------
+
+  Syntax:
+    chgrp [options] groupname filename
+
+  Examples:
+    chgrp devops file.txt           --> Change group to devops
+    chgrp -R devops /var/www/html/  --> Recursive group change
+    chgrp --reference=ref.txt f.txt --> Copy group from ref file
+
+  NOTE: chgrp is essentially same as chown :groupname
+        chown :devops file.txt = chgrp devops file.txt
+
+---------------------------------------------------------------
+12. umask — DEFAULT PERMISSION MASK
+---------------------------------------------------------------
+
+  umask controls the DEFAULT permissions assigned to newly
+  created files and directories.
+
+  Default max permissions:
+    Files       --> 666 (rw-rw-rw-) — no execute by default
+    Directories --> 777 (rwxrwxrwx)
+
+  Formula:
+    Actual permission = Max permission - umask value
+
+  Common umask values:
+    022  -->  Files: 644 (rw-r--r--)  |  Dirs: 755 (rwxr-xr-x)
+    027  -->  Files: 640 (rw-r-----)  |  Dirs: 750 (rwxr-x---)
+    077  -->  Files: 600 (rw-------)  |  Dirs: 700 (rwx------)
+    002  -->  Files: 664 (rw-rw-r--)  |  Dirs: 775 (rwxrwxr-x)
+
+  Commands:
+    umask              --> View current umask
+    umask 022          --> Set umask temporarily
+    umask -S           --> Show in symbolic format (u=rwx,g=rx,o=rx)
+
+  To make permanent: add to ~/.bashrc or /etc/profile
+
+  NOTE: umask SUBTRACTS permissions, it does not ADD them.
+        umask 022 does NOT mean 022 permissions.
+        It means REMOVE write from group and others.
+
+---------------------------------------------------------------
+13. SPECIAL PERMISSIONS (SUID, SGID, STICKY BIT)
+---------------------------------------------------------------
+
+  Standard Linux permissions = 9 bits (rwx × 3 entities)
+  But Linux actually has 12 permission bits!
+  The extra 3 are the SPECIAL permission bits.
+
+  These solve specific problems that standard rwx cannot:
+  - Running programs with elevated privileges
+  - Sharing group ownership automatically
+  - Protecting shared directories from unwanted deletions
+
+  ┌─────────────┬───────┬────────────────────────────────────────┐
+  │ Special Bit │ Value │ Purpose                                │
+  ├─────────────┼───────┼────────────────────────────────────────┤
+  │ SUID        │  4    │ File runs as its OWNER                 │
+  │ SGID        │  2    │ File runs as its GROUP                 │
+  │ Sticky Bit  │  1    │ Only owner can delete their file       │
+  └─────────────┴───────┴────────────────────────────────────────┘
+
+  ---------------------------------------------------------------
+  SUID — Set User ID (4)
+  ---------------------------------------------------------------
+  What it does:
+    When set on an EXECUTABLE file — the file runs with the
+    permissions of the FILE OWNER, not the user executing it.
+
+  Real example:
+    /usr/bin/passwd has SUID set.
+    Regular users can change their own password because passwd
+    runs as ROOT (its owner), not as the regular user.
+
+  In ls -l:
+    -rwsr-xr-x  (lowercase s in owner's execute position)
+    -rwSr-xr-x  (uppercase S = SUID set but NO execute permission)
+
+  Setting SUID:
+    chmod u+s filename         --> Symbolic
+    chmod 4755 filename        --> Octal (4 = SUID)
+
+  Removing SUID:
+    chmod u-s filename
+
+  Finding all SUID files (security audit):
+    find / -perm -4000 -type f 2>/dev/null
+
+  ---------------------------------------------------------------
+  SGID — Set Group ID (2)
+  ---------------------------------------------------------------
+  What it does on FILES:
+    Executable runs with the permissions of the FILE'S GROUP.
+
+  What it does on DIRECTORIES:
+    New files and subdirectories created inside INHERIT the
+    parent directory's group automatically.
+    (Very useful for shared team directories!)
+
+  In ls -l:
+    drwxr-sr-x  (lowercase s in group's execute position)
+    drwxr-Sr-x  (uppercase S = SGID set but NO execute)
+
+  Setting SGID:
+    chmod g+s dirname          --> Symbolic
+    chmod 2755 dirname         --> Octal (2 = SGID)
+
+  Removing SGID:
+    chmod g-s dirname
+
+  Finding all SGID files:
+    find / -perm -2000 -type f 2>/dev/null
+
+  ---------------------------------------------------------------
+  STICKY BIT (1)
+  ---------------------------------------------------------------
+  What it does:
+    When set on a DIRECTORY — only the FILE OWNER (or root)
+    can delete or rename their own files inside that directory.
+    Even if others have write permission to the directory!
+
+  Real example:
+    /tmp has sticky bit set (drwxrwxrwt)
+    Everyone can write to /tmp, but you can only delete YOUR files.
+
+  In ls -l:
+    drwxrwxrwt  (lowercase t in others' execute position)
+    drwxrwxrwT  (uppercase T = sticky set but NO execute)
+
+  Setting Sticky Bit:
+    chmod +t dirname           --> Symbolic
+    chmod 1777 dirname         --> Octal (1 = sticky)
+
+  Removing Sticky Bit:
+    chmod -t dirname
+
+  Verifying /tmp sticky bit:
+    ls -ld /tmp
+
+---------------------------------------------------------------
+14. THE 4-DIGIT OCTAL SYSTEM
+---------------------------------------------------------------
+
+  Full 12-bit permission representation uses 4 digits:
+
+    chmod XYZW filename
+
+    X = Special bits  (SUID=4, SGID=2, Sticky=1)
+    Y = Owner bits    (r=4, w=2, x=1)
+    Z = Group bits    (r=4, w=2, x=1)
+    W = Others bits   (r=4, w=2, x=1)
+
+  Visual representation:
+    4   2   1  | r  w  x  | r  -  x  | r  -  -
+    SUID SGID  |  OWNER   |  GROUP   | OTHERS
+    Sticky
+
+  Examples:
+    chmod 4755 file    --> SUID + rwxr-xr-x
+    chmod 2755 dir     --> SGID + rwxr-xr-x
+    chmod 1777 dir     --> Sticky + rwxrwxrwx  (like /tmp)
+    chmod 6755 file    --> SUID + SGID + rwxr-xr-x
+    chmod 0755 file    --> No special bits + rwxr-xr-x (same as 755)
+
+  Memory Trick:
+    4 = SUID   (same as r=4)
+    2 = SGID   (same as w=2)
+    1 = Sticky (same as x=1)
+
+  Memory One-Liners:
+    SUID   --> Runs as file's User ID   (S = run as file's User)
+    SGID   --> Runs as file's Group ID  (G = run as file's Group)
+    Sticky --> Files stick to owner     (T = sTicky)
+
+---------------------------------------------------------------
+15. VIEWING & VERIFYING PERMISSIONS
+---------------------------------------------------------------
+
+  ls -l filename             --> View permissions of a file
+  ls -la                     --> View all files including hidden
+  ls -ld directory/          --> View directory permissions itself
+  stat filename              --> Detailed file info including octal
+  stat -c "%a %n" filename   --> Show only octal perms + filename
+  getfacl filename           --> View ACL permissions (if set)
+  namei -l /path/to/file     --> Show permissions for each path part
+
+  Examples:
+    ls -l /etc/passwd
+    stat /etc/shadow
+    ls -ld /tmp              --> See sticky bit on /tmp
+    find / -perm -4000       --> Find all SUID files
+    find / -perm -2000       --> Find all SGID files
+    find / -perm -1000 -type d --> Find directories with sticky bit
+
+---------------------------------------------------------------
+16. REAL-WORLD DEVOPS PERMISSION EXAMPLES
+---------------------------------------------------------------
+
+  SCENARIO                    COMMAND
+  --------                    -------
+  Make script executable      chmod +x deploy.sh
+  Secure SSH private key      chmod 600 ~/.ssh/id_rsa
+  Secure SSH directory        chmod 700 ~/.ssh/
+  Web files (Apache/Nginx)    chmod -R 755 /var/www/html/
+  Config file (readable)      chmod 644 /etc/app/config.yml
+  Shared team directory       chmod 2775 /opt/team/project/
+  Public temp directory       chmod 1777 /tmp/shared/
+  Restrict secrets file       chmod 400 /etc/app/secrets.env
+  Change web dir owner        chown -R www-data:www-data /var/www/
+  Nginx/Apache ownership      chown -R nginx:nginx /var/www/html/
+  App log directory           chown -R appuser:appgroup /var/log/app/
+
+  SSH Key Permissions (MUST be exact or SSH rejects!):
+    ~/.ssh/              --> 700 (drwx------)
+    ~/.ssh/id_rsa        --> 600 (rw-------)
+    ~/.ssh/id_rsa.pub    --> 644 (rw-r--r--)
+    ~/.ssh/authorized_keys --> 600 (rw-------)
+    ~/.ssh/known_hosts   --> 644 (rw-r--r--)
+
+---------------------------------------------------------------
+17. KEY TAKEAWAYS FROM DAY 06
+---------------------------------------------------------------
+
+  [01] Permissions apply to 3 entities: Owner(u), Group(g), Others(o)
+
+  [02] Kernel checks permissions in ORDER: Owner → Group → Others
+       It STOPS at the first match! Owner never gets group bits.
+
+  [03] chmod has two methods: Octal (755) and Symbolic (u+x)
+       Both are valid — know both!
+
+  [04] 755 = standard for scripts/dirs | 644 = standard for files
+       600 = private files | 400 = read-only sensitive files
+
+  [05] Always use -R carefully with chmod/chown — it's recursive!
+       chmod -R 777 is DANGEROUS in production!
+
+  [06] umask SUBTRACTS from default permissions.
+       Default umask 022 → new files get 644, new dirs get 755.
+
+  [07] SUID(4) → runs as file owner (e.g. passwd command)
+       SGID(2) → new files inherit group (e.g. shared dirs)
+       Sticky(1) → only owner can delete their file (e.g. /tmp)
+
+  [08] Lowercase s/t in ls -l = special bit + execute set
+       Uppercase S/T = special bit set but NO execute (check this!)
+
+  [09] SSH keys MUST have exact permissions (600/700) or SSH breaks!
+
+  [10] chmod and chown are used in EVERY real DevOps deployment!
+
+  [11] 4-digit octal system: chmod 4755 (SUID+rwxr-xr-x)
+       First digit = special bits. Three digits = standard perms.
+
+  [12] Find SUID files for security audit:
+       find / -perm -4000 -type f 2>/dev/null
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  CHMOD OCTAL:
+    chmod 400  --> r--------
+    chmod 600  --> rw-------
+    chmod 644  --> rw-r--r--
+    chmod 700  --> rwx------
+    chmod 755  --> rwxr-xr-x
+    chmod 775  --> rwxrwxr-x
+    chmod 777  --> rwxrwxrwx (AVOID in production!)
+
+  SPECIAL PERMISSIONS:
+    chmod 4xxx --> SUID
+    chmod 2xxx --> SGID
+    chmod 1xxx --> Sticky Bit
+    chmod u+s  --> Set SUID
+    chmod g+s  --> Set SGID
+    chmod +t   --> Set Sticky Bit
+
+  OWNERSHIP:
+    chown user file           --> Change owner
+    chown user:group file     --> Change owner and group
+    chown :group file         --> Change group only
+    chown -R user:group dir/  --> Recursive
+
+  UMASK:
+    umask       --> View current umask
+    umask 022   --> Standard (files=644, dirs=755)
+    umask 077   --> Strict private (files=600, dirs=700)
+
+  VIEWING:
+    ls -l       --> View permissions
+    ls -ld      --> View directory permissions
+    stat file   --> Full permission details
+    id          --> Current user's uid, gid, groups
+
+===============================================================
+   Day 06 Complete! On to Day 07 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
