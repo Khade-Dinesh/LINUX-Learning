@@ -299,28 +299,4 @@ QUICK REFERENCE CHEAT SHEET
   ls /etc/sudoers.d/             list drop-in files
   chmod 440 /etc/sudoers.d/file  set correct permissions
 
-------------------------------------------------------------
-WHAT'S NEXT — Day 9 Preview
-------------------------------------------------------------
 
-  Phase 2 | Topic 5 (Coming Tomorrow)
-  Suggested: File Permissions deep dive — chmod, chown,
-             SUID, SGID, Sticky bit, umask
-
-------------------------------------------------------------
-PROGRESS TRACKER
-------------------------------------------------------------
-
-  [=========>                              ] Day 8 of 120
-  Phase 1 : Linux Basics            [DONE]
-  Phase 2 : Linux Advanced          [IN PROGRESS]
-    Topic 1 : Users & Groups        [DONE]
-    Topic 2 : File Permissions      [DONE]
-    Topic 3 : Processes             [DONE]
-    Topic 4 : sudo/sudoers/visudo   [DONE TODAY]
-    Topic 5 : ...                   [TOMORROW]
-
-============================================================
-  Keep going Dinesh! 8 days down. 112 to go.
-  "Automate everything. Document everything."
-============================================================
