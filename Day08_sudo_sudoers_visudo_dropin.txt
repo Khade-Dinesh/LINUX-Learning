@@ -1,0 +1,326 @@
+
+============================================================
+  120 DAYS OF DEVOPS LEARNING
+  Day 8 of 120 | Date: 07-May-2026
+  Phase 2 | Topic 4 — sudo, sudoers, visudo & Drop-in Files
+============================================================
+
+Author  : Dinesh Khade
+GitHub  : https://github.com/Khade-Dinesh
+Goal    : DevOps Engineer | Cloud Engineer | Linux System Admin
+
+------------------------------------------------------------
+WHAT I LEARNED TODAY
+------------------------------------------------------------
+
+Topics Covered:
+  1. What is sudo
+  2. How sudo works internally
+  3. /etc/sudoers file — structure & syntax
+  4. visudo — the safe way to edit sudoers
+  5. Drop-in files — /etc/sudoers.d/
+  6. Common real-world examples
+  7. Key security rules to remember
+
+------------------------------------------------------------
+1. WHAT IS sudo
+------------------------------------------------------------
+
+sudo = "Superuser Do"
+
+sudo lets a regular user run commands with root (admin)
+privileges WITHOUT logging in as root directly.
+
+Why use sudo instead of root login?
+  - Safer — you stay as your own user, just elevate when needed
+  - Auditable — every sudo command is logged in /var/log/auth.log
+  - Controllable — you decide WHICH users can run WHICH commands
+
+Basic syntax:
+  sudo <command>
+  sudo apt update
+  sudo systemctl restart nginx
+  sudo -i              # open a root shell (use carefully!)
+  sudo -u username cmd # run command as a different user
+  sudo -l              # list what sudo commands YOU can run
+
+Check who you are:
+  whoami               # shows current user
+  sudo whoami          # should print: root
+
+------------------------------------------------------------
+2. HOW sudo WORKS INTERNALLY
+------------------------------------------------------------
+
+When you type: sudo apt update
+
+  Step 1: sudo checks /etc/sudoers (and /etc/sudoers.d/)
+  Step 2: It looks for a rule matching YOUR username
+  Step 3: If a matching rule is found — command runs as root
+  Step 4: If no rule found — "not in sudoers file" error
+  Step 5: The command + timestamp is logged to auth.log
+
+sudo password caching:
+  - sudo remembers your password for 15 minutes by default
+  - After 15 min, it asks again
+  - You can change this timeout in sudoers (timestamp_timeout)
+
+Log file location:
+  Ubuntu/Debian : /var/log/auth.log
+  CentOS/RHEL   : /var/log/secure
+
+View sudo logs:
+  grep sudo /var/log/auth.log
+
+------------------------------------------------------------
+3. /etc/sudoers FILE — STRUCTURE & SYNTAX
+------------------------------------------------------------
+
+Location: /etc/sudoers
+Owner   : root
+Perms   : 440 (read-only, even for root — edit via visudo only!)
+
+NEVER edit /etc/sudoers directly with nano or vim!
+Always use: visudo
+
+-----------------------------
+SYNTAX FORMAT:
+-----------------------------
+
+  WHO   WHERE=(AS_WHOM)   WHAT
+
+  WHO       = username or %groupname
+  WHERE     = hostname (use ALL for any machine)
+  AS_WHOM   = which user to run as (usually root)
+  WHAT      = command path or ALL
+
+-----------------------------
+EXAMPLES:
+-----------------------------
+
+# Allow user 'dinesh' to run ALL commands as root
+dinesh  ALL=(ALL)  ALL
+
+# Allow user 'dinesh' with NO password prompt
+dinesh  ALL=(ALL)  NOPASSWD: ALL
+
+# Allow group 'developers' to run all commands
+%developers  ALL=(ALL)  ALL
+
+# Allow user to run ONLY specific commands
+dinesh  ALL=(ALL)  /usr/bin/systemctl, /usr/bin/apt
+
+# Allow without password for specific command only
+dinesh  ALL=(ALL)  NOPASSWD: /usr/bin/systemctl restart nginx
+
+-----------------------------
+IMPORTANT DEFAULTS IN sudoers:
+-----------------------------
+
+Defaults  env_reset                  # reset environment on sudo
+Defaults  mail_badpass               # email on wrong password
+Defaults  secure_path="..."          # safe PATH for sudo commands
+Defaults  timestamp_timeout=15       # cache password for 15 mins
+Defaults  passwd_tries=3             # 3 password attempts allowed
+Defaults  logfile="/var/log/sudo.log" # custom log file
+
+-----------------------------
+DEFAULT LINE YOU'LL SEE:
+-----------------------------
+
+root    ALL=(ALL:ALL)  ALL
+  |          |    |     |
+  |          |    |     +-- can run ALL commands
+  |          |    +-------- as ANY group
+  |          +------------- on ANY host
+  +------------------------ user: root
+
+%sudo   ALL=(ALL:ALL)  ALL
+  -- any user in the 'sudo' group gets full sudo access
+
+------------------------------------------------------------
+4. visudo — THE SAFE WAY TO EDIT sudoers
+------------------------------------------------------------
+
+visudo = vi + sudo = safe sudoers editor
+
+Why use visudo instead of nano/vim directly?
+  - It LOCKS the file while editing (no two people editing at once)
+  - It SYNTAX-CHECKS before saving (prevents lockouts!)
+  - If you make an error, visudo warns you — you can fix it before saving
+  - Direct editing can break sudo completely if you make a typo
+
+Open sudoers with visudo:
+  sudo visudo
+
+To use nano instead of vi with visudo:
+  sudo EDITOR=nano visudo
+
+What happens if you save a bad sudoers file?
+  - You get locked out of sudo
+  - Recovery requires booting into recovery mode
+
+visudo error messages:
+  >>> sudoers file: syntax error, line 12 <<<
+  -- it tells you exact line number of the error
+
+------------------------------------------------------------
+5. DROP-IN FILES — /etc/sudoers.d/
+------------------------------------------------------------
+
+What is /etc/sudoers.d/ ?
+
+  A directory where you can put SEPARATE sudoers config files
+  instead of editing the main /etc/sudoers file directly.
+
+  Each file in this directory is automatically read by sudo.
+  Think of them as "plugins" or "extensions" for sudoers.
+
+Why use drop-in files?
+  - Cleaner — keeps main sudoers file untouched
+  - Safer — if one drop-in file is broken, others still work
+  - Easier to manage — one file per user/team/app
+  - Easier to remove — just delete the file, no main file edits
+
+-----------------------------
+HOW TO CREATE A DROP-IN FILE:
+-----------------------------
+
+Step 1: Create the file using visudo -f
+  sudo visudo -f /etc/sudoers.d/dinesh
+
+  (Always use visudo -f, NOT nano, to get syntax checking)
+
+Step 2: Add your rule inside the file:
+  dinesh  ALL=(ALL)  NOPASSWD: /usr/bin/systemctl
+
+Step 3: Set correct permissions (REQUIRED):
+  sudo chmod 440 /etc/sudoers.d/dinesh
+
+Step 4: Verify it works:
+  sudo -l -U dinesh
+
+-----------------------------
+DROP-IN FILE RULES:
+-----------------------------
+
+  - File names must NOT end with ~ or contain .
+    (e.g. "dinesh.conf" is INVALID — use "dinesh" or "10-dinesh")
+  - File permissions must be 440 or 640
+  - Files are read in alphabetical order
+  - Prefix numbers to control order: 10-devteam, 20-dinesh
+
+-----------------------------
+REAL-WORLD EXAMPLES:
+-----------------------------
+
+# /etc/sudoers.d/jenkins
+jenkins  ALL=(ALL)  NOPASSWD: /usr/bin/docker, /usr/bin/systemctl
+
+# /etc/sudoers.d/devops-team
+%devops  ALL=(ALL)  ALL
+
+# /etc/sudoers.d/ansible
+ansible  ALL=(ALL)  NOPASSWD: ALL
+
+# /etc/sudoers.d/deploy-user
+deploy  ALL=(ALL)  NOPASSWD: /var/www/scripts/deploy.sh
+
+-----------------------------
+LIST ALL DROP-IN FILES:
+-----------------------------
+  ls -la /etc/sudoers.d/
+
+-----------------------------
+CHECK IF SUDOERS IS VALID:
+-----------------------------
+  sudo visudo -c          # check main sudoers
+  sudo visudo -c -f /etc/sudoers.d/dinesh   # check a drop-in file
+
+------------------------------------------------------------
+6. COMMON REAL-WORLD DEVOPS EXAMPLES
+------------------------------------------------------------
+
+SCENARIO 1: Give a new DevOps teammate sudo access
+  sudo visudo -f /etc/sudoers.d/newuser
+  -- Add: newuser  ALL=(ALL)  ALL
+
+SCENARIO 2: Jenkins needs to restart services without password
+  sudo visudo -f /etc/sudoers.d/jenkins
+  -- Add: jenkins  ALL=(ALL)  NOPASSWD: /usr/bin/systemctl
+
+SCENARIO 3: Give a deploy script sudo to copy files
+  sudo visudo -f /etc/sudoers.d/deploy
+  -- Add: deploy  ALL=(ALL)  NOPASSWD: /usr/bin/rsync
+
+SCENARIO 4: Check what sudo rights a user has
+  sudo -l -U dinesh
+
+SCENARIO 5: Remove sudo from a user
+  sudo deluser dinesh sudo      # removes from sudo group
+  -- OR delete their drop-in file: sudo rm /etc/sudoers.d/dinesh
+
+SCENARIO 6: Ansible needs passwordless sudo on remote servers
+  -- Create /etc/sudoers.d/ansible on each managed server:
+  ansible  ALL=(ALL)  NOPASSWD: ALL
+
+------------------------------------------------------------
+7. KEY SECURITY RULES TO REMEMBER
+------------------------------------------------------------
+
+  DO:
+  ✔  Use visudo or visudo -f ALWAYS
+  ✔  Use drop-in files in /etc/sudoers.d/ for per-user rules
+  ✔  Give users ONLY the commands they actually need
+  ✔  Log and audit sudo usage regularly
+  ✔  Use NOPASSWD only for automation users (Jenkins, Ansible)
+  ✔  Set file permissions to 440 on all sudoers.d files
+
+  DO NOT:
+  ✗  Never edit /etc/sudoers directly with nano/vim
+  ✗  Never give NOPASSWD: ALL to human users
+  ✗  Never share the root password — use sudo instead
+  ✗  Never create drop-in files with .bak or ~ extensions
+  ✗  Never ignore visudo syntax warnings — fix them first
+
+------------------------------------------------------------
+QUICK REFERENCE CHEAT SHEET
+------------------------------------------------------------
+
+  sudo <cmd>                     run cmd as root
+  sudo -i                        open interactive root shell
+  sudo -u user <cmd>             run as specific user
+  sudo -l                        list your sudo permissions
+  sudo -l -U username            list another user's permissions
+  sudo visudo                    safely edit /etc/sudoers
+  sudo visudo -f /etc/sudoers.d/file   safely edit drop-in file
+  sudo visudo -c                 check sudoers syntax
+  grep sudo /var/log/auth.log    view sudo logs
+  ls /etc/sudoers.d/             list drop-in files
+  chmod 440 /etc/sudoers.d/file  set correct permissions
+
+------------------------------------------------------------
+WHAT'S NEXT — Day 9 Preview
+------------------------------------------------------------
+
+  Phase 2 | Topic 5 (Coming Tomorrow)
+  Suggested: File Permissions deep dive — chmod, chown,
+             SUID, SGID, Sticky bit, umask
+
+------------------------------------------------------------
+PROGRESS TRACKER
+------------------------------------------------------------
+
+  [=========>                              ] Day 8 of 120
+  Phase 1 : Linux Basics            [DONE]
+  Phase 2 : Linux Advanced          [IN PROGRESS]
+    Topic 1 : Users & Groups        [DONE]
+    Topic 2 : File Permissions      [DONE]
+    Topic 3 : Processes             [DONE]
+    Topic 4 : sudo/sudoers/visudo   [DONE TODAY]
+    Topic 5 : ...                   [TOMORROW]
+
+============================================================
+  Keep going Dinesh! 8 days down. 112 to go.
+  "Automate everything. Document everything."
+============================================================
