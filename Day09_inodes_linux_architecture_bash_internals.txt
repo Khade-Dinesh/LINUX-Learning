@@ -1,0 +1,536 @@
+
+============================================================
+  120 DAYS OF DEVOPS LEARNING
+  Day 9 of 120 | Date: 08-May-2026
+  Phase 1 — Deep Dive
+  Topic 1 : Everything is a File — Inodes & File Types
+  Topic 2 : Linux Architecture & Kernel Internals
+  Topic 3 : Terminal, Shell Types & Bash Internals
+============================================================
+
+Author  : Dinesh Khade
+GitHub  : https://github.com/Khade-Dinesh
+Goal    : DevOps Engineer | Cloud Engineer | Linux System Admin
+
+------------------------------------------------------------
+WHAT I LEARNED TODAY
+------------------------------------------------------------
+
+  1. Everything is a file — the core Linux philosophy
+  2. Inodes — what they are and how they work
+  3. File types in Linux (7 types)
+  4. Linux architecture layers
+  5. Kernel internals — what the kernel actually does
+  6. Terminal vs Shell vs Console vs TTY
+  7. Shell types — sh, bash, zsh, dash, fish
+  8. Bash internals — how bash processes a command
+
+------------------------------------------------------------
+TOPIC 1: EVERYTHING IS A FILE
+------------------------------------------------------------
+
+One of the most fundamental Linux philosophies:
+
+  "In Linux, everything is treated as a file."
+
+This means:
+  - Regular documents        → file
+  - Directories              → file (special type)
+  - Hard drives / partitions → file (/dev/sda, /dev/sda1)
+  - Keyboard (input)         → file (/dev/stdin)
+  - Monitor (output)         → file (/dev/stdout)
+  - Errors output            → file (/dev/stderr)
+  - Network sockets          → file
+  - Processes                → file (/proc/PID/)
+  - RAM                      → file (/dev/mem)
+  - Null device              → file (/dev/null)
+  - Random data generator    → file (/dev/random)
+
+Why is this powerful?
+  - Same tools (read, write, open, close) work on EVERYTHING
+  - You can pipe data between devices just like files
+  - Makes scripting and automation extremely flexible
+
+Examples:
+  cat /dev/stdin            # read from keyboard (ctrl+c to stop)
+  echo "test" > /dev/null   # throw output away
+  cat /proc/cpuinfo         # read CPU info — it's just a file!
+  cat /proc/meminfo         # RAM info as a file
+  ls /proc/$$               # inspect current shell's process files
+
+------------------------------------------------------------
+WHAT IS AN INODE?
+------------------------------------------------------------
+
+When you create a file, Linux stores TWO things:
+
+  1. The FILE DATA   → actual content (bytes on disk)
+  2. The INODE       → metadata about the file
+
+An inode is a data structure that stores:
+  - File size
+  - File type
+  - Owner (UID) and group (GID)
+  - Permissions (rwxrwxrwx)
+  - Timestamps: atime (accessed), mtime (modified), ctime (changed)
+  - Number of hard links
+  - Pointers to actual data blocks on disk
+  - Does NOT store the filename!
+
+  (The filename is stored in the directory, which maps
+   filename → inode number)
+
+Every file has a unique inode number on its filesystem.
+Two hard links to the same file share the same inode number.
+
+-----------------------------
+INODE COMMANDS:
+-----------------------------
+
+  ls -i filename            # show inode number of a file
+  ls -i                     # show inode numbers for all files
+  stat filename             # show full inode details
+  df -i                     # show inode usage on all filesystems
+  find . -inum 12345        # find file by inode number
+
+Example stat output:
+  stat hello.txt
+    File: hello.txt
+    Size: 42          Inode: 524310
+    Access: -rw-r--r--
+    Uid: 1000  Gid: 1000
+    Access: 2026-05-08 10:00:00
+    Modify: 2026-05-07 09:30:00
+    Change: 2026-05-07 09:30:00
+
+-----------------------------
+HARD LINKS vs SOFT LINKS (inode perspective):
+-----------------------------
+
+Hard Link:
+  - Points to the SAME inode as the original file
+  - Same inode number as original
+  - File data is NOT deleted until ALL hard links are removed
+  - Cannot cross filesystems
+  ln file.txt hardlink.txt
+  ls -i file.txt hardlink.txt   # same inode number!
+
+Soft Link (Symbolic Link):
+  - Points to the FILENAME (path), not the inode
+  - Has its OWN inode number
+  - If original file is deleted, soft link BREAKS
+  - Can cross filesystems
+  ln -s file.txt softlink.txt
+  ls -li softlink.txt            # different inode, shows -> file.txt
+
+-----------------------------
+INODE EXHAUSTION:
+-----------------------------
+
+  Each filesystem has a fixed number of inodes created at format time.
+  If you run out of inodes, you CANNOT create new files — even if disk
+  has free space!
+
+  Check inode usage:
+    df -i /
+
+  This is a common issue on servers with millions of tiny log/cache files.
+
+------------------------------------------------------------
+FILE TYPES IN LINUX (7 Types)
+------------------------------------------------------------
+
+Linux has 7 official file types. Check with: ls -l
+The first character in permissions shows the type.
+
+  Symbol  Type              Example
+  ------  ----------------  ---------------------------------
+    -     Regular file      /etc/passwd, /home/dinesh/notes.txt
+    d     Directory         /home, /etc, /var
+    l     Symbolic link     /usr/bin/python -> python3.10
+    c     Character device  /dev/tty, /dev/stdin (byte-by-byte)
+    b     Block device      /dev/sda, /dev/sda1 (disk drives)
+    s     Socket            /run/docker.sock, /tmp/.X0-lock
+    p     Named pipe (FIFO) /tmp/mypipe (inter-process comms)
+
+Check file type:
+  ls -l filename        # first character shows type
+  file filename         # describes the file type in detail
+  stat filename         # shows type in output
+
+Examples:
+  ls -l /dev/sda        # b = block device
+  ls -l /dev/tty        # c = character device
+  ls -l /etc/hostname   # - = regular file
+  ls -l /etc            # d = directory
+  ls -l /run/docker.sock # s = socket
+
+------------------------------------------------------------
+TOPIC 2: LINUX ARCHITECTURE & KERNEL INTERNALS
+------------------------------------------------------------
+
+Linux architecture is layered. From top to bottom:
+
+  +-----------------------------------------------+
+  |          USER APPLICATIONS                    |
+  |  (bash, nginx, docker, python, vim, etc.)     |
+  +-----------------------------------------------+
+  |           SYSTEM LIBRARIES                    |
+  |  (glibc — bridges apps to kernel calls)       |
+  +-----------------------------------------------+
+  |           SYSTEM CALL INTERFACE               |
+  |  (read, write, open, fork, exec, mmap...)     |
+  +-----------------------------------------------+
+  |              LINUX KERNEL                     |
+  |  +---------------+  +---------------------+  |
+  |  | Process Mgmt  |  | Memory Management   |  |
+  |  +---------------+  +---------------------+  |
+  |  +---------------+  +---------------------+  |
+  |  | File Systems  |  | Network Stack       |  |
+  |  +---------------+  +---------------------+  |
+  |  +---------------+  +---------------------+  |
+  |  | Device Drivers|  | Security (SELinux)  |  |
+  |  +---------------+  +---------------------+  |
+  +-----------------------------------------------+
+  |             HARDWARE                          |
+  |  (CPU, RAM, Disk, NIC, GPU, Keyboard...)      |
+  +-----------------------------------------------+
+
+-----------------------------
+THE TWO MODES:
+-----------------------------
+
+User Space (Ring 3):
+  - Where regular programs run (bash, nginx, python)
+  - Limited access to hardware — must go through kernel
+  - If a program crashes, only that program dies
+  - Safer, isolated
+
+Kernel Space (Ring 0):
+  - Where the kernel runs
+  - Direct hardware access
+  - Full system privileges
+  - If kernel crashes → entire system crashes (kernel panic)
+
+-----------------------------
+WHAT THE KERNEL ACTUALLY DOES:
+-----------------------------
+
+1. PROCESS MANAGEMENT
+   - Creates, schedules, and kills processes
+   - Manages CPU time sharing between processes
+   - Handles forking (creating child processes)
+   - Tools to see: ps, top, htop, /proc/
+
+2. MEMORY MANAGEMENT
+   - Allocates and deallocates RAM for processes
+   - Manages virtual memory (each process thinks it has all RAM)
+   - Handles page swapping to disk when RAM is full
+   - Tools to see: free -h, /proc/meminfo, vmstat
+
+3. FILE SYSTEM MANAGEMENT
+   - Reads/writes files on disk
+   - Manages inodes and directory trees
+   - Supports multiple FS types: ext4, xfs, btrfs, tmpfs, nfs
+   - Tools to see: mount, df, lsblk, /proc/mounts
+
+4. DEVICE DRIVERS
+   - Talks to hardware: disks, network cards, USB, GPU
+   - Devices appear as files in /dev/
+   - Tools to see: lsmod (list loaded drivers), dmesg
+
+5. NETWORK STACK
+   - Handles all network protocols: TCP/IP, UDP, ICMP
+   - Manages network interfaces and routing
+   - Tools to see: ip a, ss, netstat, /proc/net/
+
+6. SYSTEM CALLS (SYSCALLS)
+   - The bridge between user space and kernel
+   - Programs request kernel services via syscalls
+   - Common syscalls: read(), write(), open(), fork(), exec()
+   - See syscalls made by a program: strace ls
+
+-----------------------------
+KEY KERNEL INTERNALS TO KNOW:
+-----------------------------
+
+Scheduler:
+  - Decides which process runs on CPU at any moment
+  - Linux uses CFS (Completely Fair Scheduler)
+  - View: cat /proc/schedstat
+
+Virtual File System (VFS):
+  - Abstraction layer — makes all filesystems look the same
+  - Apps don't care if file is on ext4, nfs, or tmpfs
+  - VFS handles the translation
+
+OOM Killer (Out-Of-Memory Killer):
+  - When RAM is full, kernel kills a process to free memory
+  - It scores each process and kills the highest scorer
+  - View who got killed: dmesg | grep -i "oom"
+
+Kernel Ring Buffer:
+  - Log of kernel boot messages and hardware events
+  - View: dmesg | less
+  - Useful for debugging hardware and driver issues
+
+Kernel Version:
+  uname -r          # e.g. 6.8.0-41-generic
+  uname -a          # full system info
+
+Kernel files location:
+  /boot/vmlinuz-*   # compressed kernel image
+  /boot/initrd.img  # initial ramdisk (early boot filesystem)
+  /proc/            # virtual filesystem — live kernel data
+  /sys/             # sysfs — kernel & hardware info
+  /dev/             # device files
+
+------------------------------------------------------------
+TOPIC 3: TERMINAL, SHELL TYPES & BASH INTERNALS
+------------------------------------------------------------
+
+-----------------------------
+TERMINAL vs SHELL vs CONSOLE vs TTY
+-----------------------------
+
+TERMINAL (Terminal Emulator):
+  - The window you type in
+  - Software that displays text I/O
+  - Examples: GNOME Terminal, iTerm2, Alacritty, xterm
+  - It's just a window — it doesn't process commands
+
+CONSOLE:
+  - Physical or virtual text interface
+  - The original way to interact before GUIs
+  - Virtual consoles: Ctrl+Alt+F1 to F6 in Linux
+
+TTY (TeleTYpewriter):
+  - Historical term — real physical teletype machines
+  - In Linux: a communication channel between user and kernel
+  - Each terminal session gets a TTY device
+  - Check yours: tty   → e.g. /dev/pts/0
+
+PTY (Pseudo TTY):
+  - Fake TTY used by terminal emulators
+  - Pair of master/slave — emulator holds master, shell gets slave
+  - /dev/pts/0, /dev/pts/1 etc.
+
+SHELL:
+  - The program INSIDE the terminal that reads your commands
+  - Interprets and executes commands
+  - Talks to the kernel via system calls
+  - Examples: bash, zsh, sh, dash, fish, ksh
+
+  Terminal = the window
+  Shell    = the program that runs inside the window
+
+-----------------------------
+SHELL TYPES IN LINUX:
+-----------------------------
+
+sh (Bourne Shell):
+  - Original Unix shell — written by Stephen Bourne (1979)
+  - Very minimal, fast, portable
+  - No command history, no tab completion
+  - Still used in scripts for maximum portability
+  - Location: /bin/sh (often symlinked to dash on Ubuntu)
+
+bash (Bourne Again Shell):
+  - Most popular shell — default on most Linux distros
+  - Released 1989 by GNU project
+  - Superset of sh — everything sh does + more
+  - Features: history, tab completion, arrays, functions
+  - Config files: ~/.bashrc, ~/.bash_profile, ~/.bash_history
+  - Location: /bin/bash
+
+zsh (Z Shell):
+  - More powerful than bash
+  - Better tab completion, spelling correction
+  - Highly customizable (Oh My Zsh framework)
+  - Default on macOS since Catalina
+  - Config: ~/.zshrc
+  - Location: /bin/zsh
+
+dash (Debian Almquist Shell):
+  - Minimal, very fast shell
+  - Default /bin/sh on Ubuntu/Debian
+  - Used for system boot scripts (faster than bash)
+  - Does NOT have bash-specific features
+  - Location: /bin/dash
+
+fish (Friendly Interactive Shell):
+  - Very user-friendly, colorful, syntax highlighting
+  - Auto-suggestions as you type
+  - Not POSIX-compliant — different scripting syntax
+  - Great for beginners learning the terminal
+  - Location: /usr/bin/fish
+
+ksh (KornShell):
+  - Mix of sh and csh features
+  - Common in older Unix/AIX systems
+  - Good scripting capabilities
+
+-----------------------------
+CHECK & CHANGE YOUR SHELL:
+-----------------------------
+
+  echo $SHELL           # your current default shell
+  echo $0               # shell running right now
+  cat /etc/shells       # list all installed shells
+  chsh -s /bin/zsh      # change your default shell to zsh
+  bash                  # temporarily switch to bash
+  exit                  # go back to previous shell
+
+-----------------------------
+BASH INTERNALS — HOW BASH PROCESSES A COMMAND
+-----------------------------
+
+When you type: ls -la /home
+
+Bash processes it in these exact steps:
+
+STEP 1 — TOKENIZATION (Lexical Analysis)
+  - Bash splits the input into tokens
+  - Tokens: "ls"   "-la"   "/home"
+  - Recognizes: command | arguments | operators | pipes
+
+STEP 2 — PARSING
+  - Bash builds a parse tree (command structure)
+  - Identifies: Is this a simple command? A pipeline? A loop?
+  - Handles special chars: |  >  >>  <  &  ;  &&  ||
+
+STEP 3 — EXPANSION (most complex step)
+  Bash performs multiple expansions in this ORDER:
+    a) Brace Expansion        {a,b,c}  →  a b c
+    b) Tilde Expansion        ~/docs   →  /home/dinesh/docs
+    c) Parameter Expansion    $HOME    →  /home/dinesh
+    d) Command Substitution   $(pwd)   →  /current/dir
+    e) Arithmetic Expansion   $((2+3)) →  5
+    f) Word Splitting         splits on spaces/tabs/newlines
+    g) Filename Globbing      *.txt    →  file1.txt file2.txt
+
+STEP 4 — QUOTE REMOVAL
+  - Removes quote characters that were used for grouping
+  - "hello world" → hello world (as one argument)
+
+STEP 5 — COMMAND LOOKUP
+  Bash searches for the command in this ORDER:
+    1. Aliases           (alias ll='ls -la')
+    2. Functions         (user-defined bash functions)
+    3. Builtin commands  (cd, echo, pwd, export, source)
+    4. External commands (search in $PATH)
+
+  Check what type a command is:
+    type ls           # ls is /bin/ls (external)
+    type cd           # cd is a shell builtin
+    type ll           # ll is aliased to 'ls --color=auto'
+
+STEP 6 — FORK & EXEC (for external commands)
+  - Bash calls fork() → creates a child process (copy of bash)
+  - Child process calls exec() → replaces itself with the command
+  - e.g. child process becomes: /bin/ls -la /home
+  - Parent bash WAITS for child to finish (unless backgrounded with &)
+
+STEP 7 — I/O REDIRECTION
+  - Set up before exec() runs
+  - stdin (0), stdout (1), stderr (2) redirected as specified
+  - ls > out.txt    → stdout goes to file
+  - ls 2>/dev/null  → stderr discarded
+  - ls 2>&1         → stderr merged into stdout
+
+STEP 8 — RETURN / EXIT CODE
+  - Command finishes, returns exit code to bash
+  - 0   = success
+  - non-zero = failure (1 general, 2 misuse, 127 not found, 130 ctrl+c)
+  - Check: echo $?    # print last exit code
+
+-----------------------------
+BASH CONFIGURATION FILES:
+-----------------------------
+
+Login Shell (when you SSH in or log in to console):
+  /etc/profile          # system-wide, runs first
+  ~/.bash_profile       # user-specific, login shell
+  ~/.bash_login         # fallback if no .bash_profile
+  ~/.profile            # fallback fallback
+
+Interactive Non-Login Shell (when you open terminal app):
+  /etc/bash.bashrc      # system-wide
+  ~/.bashrc             # user-specific (add aliases here!)
+
+Non-Interactive Shell (scripts):
+  $BASH_ENV             # if set, this file is sourced
+  No .bashrc or .profile is loaded
+
+On logout:
+  ~/.bash_logout        # runs when you log out
+
+-----------------------------
+USEFUL BASH INTERNALS COMMANDS:
+-----------------------------
+
+  echo $BASH_VERSION    # bash version
+  echo $SHELL           # default shell path
+  echo $PATH            # command search path
+  echo $PS1             # your prompt format
+  echo $?               # last command's exit code
+  echo $!               # PID of last background process
+  echo $$               # current shell's PID
+  set                   # show all shell variables
+  env                   # show environment variables
+  type <command>        # show what type a command is
+  which <command>       # show path of external command
+  command -v <cmd>      # safer version of which
+  strace -e execve ls   # trace syscalls made by ls
+  bash -x script.sh     # debug mode — shows each step
+
+------------------------------------------------------------
+QUICK REFERENCE CHEAT SHEET
+------------------------------------------------------------
+
+  stat file             show full inode info
+  ls -i file            show inode number
+  df -i                 show inode usage
+  file filename         show file type
+  ls -l                 first char = file type symbol
+  ln file hard          create hard link (same inode)
+  ln -s file soft       create soft link (own inode)
+
+  uname -r              kernel version
+  dmesg | less          kernel messages
+  cat /proc/cpuinfo     CPU info from kernel
+  cat /proc/meminfo     RAM info from kernel
+  lsmod                 list loaded kernel modules
+  strace ls             trace syscalls
+
+  echo $SHELL           current shell
+  cat /etc/shells       all available shells
+  type <cmd>            how bash will run this command
+  echo $?               last exit code
+  bash -x script.sh     debug a bash script
+
+------------------------------------------------------------
+WHAT'S NEXT — Day 10 Preview
+------------------------------------------------------------
+
+  Suggested Next Topics (Phase 1 or Phase 2):
+  - Process management deep dive: fork, exec, wait, signals
+  - Filesystem hierarchy standard (FHS) — what every dir means
+  - Networking basics: OSI model, TCP/IP from Linux perspective
+
+------------------------------------------------------------
+PROGRESS TRACKER
+------------------------------------------------------------
+
+  [==========>                             ] Day 9 of 120
+  Phase 1 : Linux Fundamentals Deep Dive   [IN PROGRESS]
+    - Everything is a File / Inodes        [DONE TODAY]
+    - Linux Architecture & Kernel          [DONE TODAY]
+    - Terminal, Shells & Bash Internals    [DONE TODAY]
+  Phase 2 : Linux Advanced                 [IN PROGRESS]
+    Topic 4 : sudo/sudoers/visudo          [DONE - Day 8]
+
+============================================================
+  Keep going Dinesh! 9 days strong. 111 to go.
+  "Know your tools deeply. The terminal is your superpower."
+============================================================
