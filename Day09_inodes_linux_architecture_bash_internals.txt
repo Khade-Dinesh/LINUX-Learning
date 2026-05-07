@@ -509,28 +509,4 @@ QUICK REFERENCE CHEAT SHEET
   echo $?               last exit code
   bash -x script.sh     debug a bash script
 
-------------------------------------------------------------
-WHAT'S NEXT — Day 10 Preview
-------------------------------------------------------------
-
-  Suggested Next Topics (Phase 1 or Phase 2):
-  - Process management deep dive: fork, exec, wait, signals
-  - Filesystem hierarchy standard (FHS) — what every dir means
-  - Networking basics: OSI model, TCP/IP from Linux perspective
-
-------------------------------------------------------------
-PROGRESS TRACKER
-------------------------------------------------------------
-
-  [==========>                             ] Day 9 of 120
-  Phase 1 : Linux Fundamentals Deep Dive   [IN PROGRESS]
-    - Everything is a File / Inodes        [DONE TODAY]
-    - Linux Architecture & Kernel          [DONE TODAY]
-    - Terminal, Shells & Bash Internals    [DONE TODAY]
-  Phase 2 : Linux Advanced                 [IN PROGRESS]
-    Topic 4 : sudo/sudoers/visudo          [DONE - Day 8]
-
-============================================================
-  Keep going Dinesh! 9 days strong. 111 to go.
-  "Know your tools deeply. The terminal is your superpower."
 ============================================================
