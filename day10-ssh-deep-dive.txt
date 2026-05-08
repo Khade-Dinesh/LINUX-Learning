@@ -1,0 +1,685 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 10
+   Topic: SSH — Secure Shell Deep Dive
+===============================================================
+
+Author   : Dinesh
+Day      : 10 / 120
+Topic    : SSH, Key Generation, Permissions, ssh-copy-id,
+           Client Config, Server Hardening
+Phase    : Phase 2 — Topic 5
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  What is SSH?
+  2.  How SSH Works — The Big Picture
+  3.  SSH Connection Methods
+  4.  SSH Key Generation — ssh-keygen
+  5.  Understanding Key Pairs
+  6.  ssh-copy-id — Copy Public Key to Server
+  7.  SSH Key File Permissions (CRITICAL!)
+  8.  SSH Client Config File (~/.ssh/config)
+  9.  SSH Server Config (/etc/ssh/sshd_config)
+  10. Common SSH Commands
+  11. SCP — Secure File Transfer
+  12. SSH Tunneling & Port Forwarding
+  13. Real-World DevOps SSH Scenarios
+  14. My Mistake Today — Real Learning!
+  15. Key Takeaways from Day 10
+
+---------------------------------------------------------------
+1. WHAT IS SSH?
+---------------------------------------------------------------
+
+  SSH = Secure Shell Protocol
+
+  SSH is a cryptographic network protocol that allows you to:
+  → Securely connect to remote servers over an unsecured network
+  → Execute commands on remote machines
+  → Transfer files securely
+  → Create encrypted tunnels for other protocols
+
+  Default Port  : 22
+  Config Files  : /etc/ssh/sshd_config (server)
+                  ~/.ssh/config        (client)
+  Key Directory : ~/.ssh/
+
+  Why SSH over Telnet/FTP?
+  → Telnet/FTP send data in plain text → easily intercepted!
+  → SSH encrypts ALL data → safe even on public networks
+
+---------------------------------------------------------------
+2. HOW SSH WORKS — THE BIG PICTURE
+---------------------------------------------------------------
+
+  CLIENT (Your Machine)          SERVER (Remote Machine)
+  ─────────────────────          ──────────────────────
+  Private Key → id_rsa           Public Key → authorized_keys
+  ~/.ssh/config                  /etc/ssh/sshd_config
+
+  CONNECTION FLOW:
+
+  Step 1: Client sends connection request to server
+  Step 2: Server sends its public key (host key)
+  Step 3: Client verifies server identity (~/.ssh/known_hosts)
+  Step 4: Encrypted session established
+  Step 5: Authentication (password OR key-based)
+  Step 6: Shell/command access granted
+
+  Two Authentication Methods:
+  ┌─────────────────┬────────────────────────────────────────┐
+  │ Method          │ How It Works                           │
+  ├─────────────────┼────────────────────────────────────────┤
+  │ Password        │ Type password every time               │
+  │ SSH Key         │ Private key on client, public on server│
+  └─────────────────┴────────────────────────────────────────┘
+
+---------------------------------------------------------------
+3. SSH CONNECTION METHODS
+---------------------------------------------------------------
+
+  METHOD 1 — Password Authentication:
+
+    ssh username@server-ip
+    ssh username@server-ip -p 2222    # custom port
+    ssh dinesh@192.168.1.10
+
+    → Prompts for password every connection
+    → Less secure (brute-force risk)
+    → Not recommended for production servers
+
+  METHOD 2 — SSH Key Authentication (Recommended):
+
+    ssh -i ~/.ssh/id_rsa username@server-ip
+    ssh -i ~/.ssh/id_rsa dinesh@192.168.1.10
+
+    → No password needed
+    → Much more secure
+    → Standard in all DevOps workflows
+
+  METHOD 3 — Using SSH Config (Best Practice):
+
+    ssh myserver                      # after setting up config file
+    → Cleanest and most efficient way
+
+---------------------------------------------------------------
+4. SSH KEY GENERATION — ssh-keygen
+---------------------------------------------------------------
+
+  BASIC GENERATION:
+
+    ssh-keygen
+
+    → Uses RSA by default
+    → Saves to ~/.ssh/id_rsa (private) and ~/.ssh/id_rsa.pub (public)
+    → Prompts for passphrase (optional but recommended)
+
+  RECOMMENDED GENERATION (Strong Keys):
+
+    ssh-keygen -t rsa -b 4096
+    → -t rsa    : key type = RSA
+    → -b 4096   : key size = 4096 bits (stronger than default 2048)
+
+    ssh-keygen -t ed25519
+    → ed25519 : modern, shorter, faster, more secure than RSA
+    → Recommended for new setups!
+
+  WITH CUSTOM FILENAME & COMMENT:
+
+    ssh-keygen -t rsa -b 4096 -C "dinesh@devops" -f ~/.ssh/my_server_key
+    → -C "comment"  : adds comment (usually your email or label)
+    → -f filename   : custom output filename
+
+  GENERATION PROCESS:
+
+    $ ssh-keygen -t rsa -b 4096
+    Generating public/private rsa key pair.
+    Enter file in which to save the key (/home/dinesh/.ssh/id_rsa):
+    Enter passphrase (empty for no passphrase):
+    Enter same passphrase again:
+    Your identification has been saved in /home/dinesh/.ssh/id_rsa
+    Your public key has been saved in /home/dinesh/.ssh/id_rsa.pub
+
+  OUTPUT FILES:
+
+    ~/.ssh/id_rsa        → PRIVATE KEY (your identity — NEVER share!)
+    ~/.ssh/id_rsa.pub    → PUBLIC KEY  (share with servers freely)
+
+  VIEW YOUR PUBLIC KEY:
+
+    cat ~/.ssh/id_rsa.pub
+    → Copy this to server's authorized_keys
+
+  KEY TYPES COMPARISON:
+
+  ┌──────────┬──────────┬───────────┬─────────────────────────┐
+  │ Type     │ Flag     │ Strength  │ Notes                   │
+  ├──────────┼──────────┼───────────┼─────────────────────────┤
+  │ RSA      │ -t rsa   │ Good      │ Most compatible         │
+  │ Ed25519  │ -t ed25519│ Best     │ Modern, recommended     │
+  │ ECDSA    │ -t ecdsa │ Good      │ Elliptic curve          │
+  │ DSA      │ -t dsa   │ Weak      │ Deprecated, avoid!      │
+  └──────────┴──────────┴───────────┴─────────────────────────┘
+
+---------------------------------------------------------------
+5. UNDERSTANDING KEY PAIRS
+---------------------------------------------------------------
+
+  PRIVATE KEY (id_rsa):
+  → Stays on YOUR machine ONLY
+  → Never share, never copy to server
+  → Like your house key — keep it safe!
+  → Location: ~/.ssh/id_rsa
+  → Permissions: 600 (MUST!)
+
+  PUBLIC KEY (id_rsa.pub):
+  → Copy to every server you want to access
+  → Lives in server's ~/.ssh/authorized_keys
+  → Like a lock — install it on the door
+  → Location: ~/.ssh/id_rsa.pub
+  → Permissions: 644
+
+  HOW AUTHENTICATION WORKS:
+  1. Client says: "I have private key for this public key"
+  2. Server checks authorized_keys for matching public key
+  3. Server sends encrypted challenge (only private key can solve)
+  4. Client decrypts with private key and responds
+  5. Server verifies → ACCESS GRANTED!
+
+  KNOWN HOSTS FILE:
+    ~/.ssh/known_hosts
+    → Stores fingerprints of servers you've connected to
+    → Protects against Man-in-the-Middle attacks
+    → First connection asks you to verify server fingerprint
+
+---------------------------------------------------------------
+6. ssh-copy-id — COPY PUBLIC KEY TO SERVER
+---------------------------------------------------------------
+
+  PURPOSE:
+    Automatically copies your public key to server's
+    authorized_keys file with correct permissions.
+
+  SYNTAX:
+    ssh-copy-id username@server-ip
+    ssh-copy-id -i ~/.ssh/id_rsa.pub username@server-ip
+    ssh-copy-id -i ~/.ssh/id_rsa.pub -p 2222 username@server-ip
+
+  EXAMPLES:
+    ssh-copy-id dinesh@192.168.1.10
+    ssh-copy-id -i ~/.ssh/id_rsa.pub dinesh@192.168.1.10
+    ssh-copy-id -i ~/.ssh/my_key.pub -p 2222 dinesh@myserver.com
+
+  WHAT IT DOES AUTOMATICALLY:
+  → Reads your public key (~/.ssh/id_rsa.pub)
+  → Connects to server with password (one last time!)
+  → Creates ~/.ssh/ directory on server if missing
+  → Appends public key to ~/.ssh/authorized_keys on server
+  → Sets correct permissions on server automatically
+
+  MANUAL METHOD (if ssh-copy-id not available):
+
+    # Copy public key manually
+    cat ~/.ssh/id_rsa.pub | ssh dinesh@192.168.1.10 \
+    "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+
+    # OR using scp
+    scp ~/.ssh/id_rsa.pub dinesh@192.168.1.10:~/.ssh/authorized_keys
+
+  VERIFY KEY COPIED SUCCESSFULLY:
+    ssh dinesh@192.168.1.10    # should login WITHOUT password now!
+
+---------------------------------------------------------------
+7. SSH KEY FILE PERMISSIONS (CRITICAL!)
+---------------------------------------------------------------
+
+  SSH is VERY strict about permissions.
+  Wrong permissions = SSH REFUSES to connect!
+
+  REQUIRED PERMISSIONS:
+
+  ┌────────────────────────────┬──────┬───────────┬──────────────┐
+  │ File/Directory             │ Perm │ Octal     │ Command      │
+  ├────────────────────────────┼──────┼───────────┼──────────────┤
+  │ ~/.ssh/ (directory)        │ drwx │ 700       │ chmod 700    │
+  │ ~/.ssh/id_rsa (private)    │ -rw- │ 600       │ chmod 600    │
+  │ ~/.ssh/id_rsa.pub (public) │ -rw-r│ 644       │ chmod 644    │
+  │ ~/.ssh/authorized_keys     │ -rw- │ 600       │ chmod 600    │
+  │ ~/.ssh/known_hosts         │ -rw- │ 644       │ chmod 644    │
+  │ ~/.ssh/config              │ -rw- │ 600       │ chmod 600    │
+  └────────────────────────────┴──────┴───────────┴──────────────┘
+
+  SET ALL PERMISSIONS AT ONCE:
+
+    chmod 700 ~/.ssh
+    chmod 600 ~/.ssh/id_rsa
+    chmod 644 ~/.ssh/id_rsa.pub
+    chmod 600 ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/config
+
+  OWNERSHIP MUST ALSO BE CORRECT:
+
+    chown -R $USER:$USER ~/.ssh
+
+  SSH ERROR MESSAGES CAUSED BY WRONG PERMISSIONS:
+
+    "WARNING: UNPROTECTED PRIVATE KEY FILE!"
+    → chmod 600 ~/.ssh/id_rsa
+
+    "Permissions too open"
+    → Your private key or .ssh dir has too many permissions
+
+    "Bad owner or permissions on ~/.ssh/config"
+    → chmod 600 ~/.ssh/config
+
+---------------------------------------------------------------
+8. SSH CLIENT CONFIG FILE (~/.ssh/config)
+---------------------------------------------------------------
+
+  PURPOSE:
+    Store SSH connection settings per host.
+    Avoid typing long commands every time.
+
+  LOCATION: ~/.ssh/config
+  PERMISSION: 600 (chmod 600 ~/.ssh/config)
+
+  BASIC STRUCTURE:
+
+    Host alias-name
+        HostName server-ip-or-domain
+        User username
+        IdentityFile path-to-private-key
+        Port port-number
+
+  REAL EXAMPLES:
+
+    # Connect as specific user by name only
+    Host myserver
+        HostName 192.168.1.10
+        User dinesh
+        IdentityFile ~/.ssh/id_rsa
+        Port 22
+
+    # AWS EC2 instance
+    Host aws-ec2
+        HostName ec2-54-123-456-789.compute.amazonaws.com
+        User ubuntu
+        IdentityFile ~/.ssh/aws-key.pem
+        Port 22
+
+    # Custom port server
+    Host devserver
+        HostName 10.0.0.5
+        User admin
+        IdentityFile ~/.ssh/dev_key
+        Port 2222
+
+    # Multiple servers with same key
+    Host prod-*
+        User deployer
+        IdentityFile ~/.ssh/prod_key
+        Port 22
+
+  ADDITIONAL CONFIG OPTIONS:
+
+    ServerAliveInterval 60    # send keepalive every 60 seconds
+    ServerAliveCountMax 3     # disconnect after 3 missed keepalives
+    StrictHostKeyChecking no  # skip host key verification (dev only)
+    ForwardAgent yes          # forward SSH agent to remote server
+    Compression yes           # compress data (useful on slow networks)
+    LogLevel VERBOSE          # detailed logging for debugging
+
+  USAGE AFTER CONFIG SETUP:
+
+    # Instead of:
+    ssh -i ~/.ssh/id_rsa -p 2222 dinesh@192.168.1.10
+
+    # Just type:
+    ssh myserver              # uses all settings from config!
+
+    # Works with other commands too:
+    scp file.txt myserver:/home/dinesh/
+    rsync -avz ./project/ myserver:/var/www/
+
+---------------------------------------------------------------
+9. SSH SERVER CONFIG (/etc/ssh/sshd_config)
+---------------------------------------------------------------
+
+  LOCATION : /etc/ssh/sshd_config
+  EDIT WITH : sudo nano /etc/ssh/sshd_config
+  RESTART   : sudo systemctl restart sshd
+
+  KEY SECURITY SETTINGS:
+
+    # Change default port (reduces automated attacks)
+    Port 2222
+
+    # Block root login (VERY important!)
+    PermitRootLogin no
+
+    # Force key-based auth only (disable passwords)
+    PasswordAuthentication no
+
+    # Only allow specific users
+    AllowUsers dinesh admin
+
+    # Only allow specific groups
+    AllowGroups sshusers devops
+
+    # Disable empty passwords
+    PermitEmptyPasswords no
+
+    # Enable public key authentication
+    PubkeyAuthentication yes
+
+    # Location of authorized keys
+    AuthorizedKeysFile .ssh/authorized_keys
+
+    # Disconnect idle sessions after 5 minutes
+    ClientAliveInterval 300
+    ClientAliveCountMax 2
+
+    # Limit login attempts
+    MaxAuthTries 3
+
+    # Limit concurrent connections
+    MaxSessions 5
+
+    # Disable X11 forwarding if not needed
+    X11Forwarding no
+
+  AFTER CHANGES — ALWAYS TEST BEFORE RESTARTING:
+
+    sudo sshd -t              # test config syntax
+    sudo systemctl restart sshd
+    sudo systemctl status sshd
+
+  WARNING: Always keep one terminal session open while
+  changing sshd_config! Wrong config can lock you out!
+
+---------------------------------------------------------------
+10. COMMON SSH COMMANDS
+---------------------------------------------------------------
+
+  BASIC CONNECTION:
+    ssh user@host                   # basic connection
+    ssh -p 2222 user@host           # custom port
+    ssh -v user@host                # verbose (debug)
+    ssh -vvv user@host              # extra verbose
+    ssh -i key.pem user@host        # specific key
+
+  KEY MANAGEMENT:
+    ssh-keygen -t rsa -b 4096       # generate RSA key
+    ssh-keygen -t ed25519           # generate Ed25519 key
+    ssh-keygen -l -f id_rsa.pub     # show key fingerprint
+    ssh-keygen -p -f id_rsa         # change key passphrase
+    ssh-add ~/.ssh/id_rsa           # add key to ssh-agent
+    ssh-add -l                      # list keys in agent
+
+  SSH AGENT:
+    eval $(ssh-agent)               # start ssh-agent
+    ssh-add ~/.ssh/id_rsa           # add private key to agent
+    ssh-add -l                      # list loaded keys
+    ssh-add -D                      # remove all keys from agent
+
+  USEFUL OPTIONS:
+    ssh -N user@host                # no command, just tunnel
+    ssh -f user@host command        # run in background
+    ssh -X user@host                # enable X11 forwarding
+    ssh -A user@host                # forward ssh agent
+    ssh -o StrictHostKeyChecking=no # skip host verification
+
+  SERVER MANAGEMENT:
+    sudo systemctl start sshd       # start SSH service
+    sudo systemctl stop sshd        # stop SSH service
+    sudo systemctl restart sshd     # restart SSH service
+    sudo systemctl status sshd      # check SSH status
+    sudo systemctl enable sshd      # auto-start on boot
+    sudo sshd -t                    # test config syntax
+
+---------------------------------------------------------------
+11. SCP — SECURE FILE TRANSFER
+---------------------------------------------------------------
+
+  SCP = Secure Copy Protocol (uses SSH)
+
+  SYNTAX:
+    scp [options] source destination
+
+  COPY FROM LOCAL TO REMOTE:
+    scp file.txt dinesh@192.168.1.10:/home/dinesh/
+    scp -r folder/ dinesh@192.168.1.10:/home/dinesh/
+    scp -P 2222 file.txt dinesh@myserver:/tmp/
+
+  COPY FROM REMOTE TO LOCAL:
+    scp dinesh@192.168.1.10:/home/dinesh/file.txt .
+    scp -r dinesh@192.168.1.10:/var/log/app/ ./logs/
+
+  COPY BETWEEN TWO REMOTE SERVERS:
+    scp user1@server1:/path/file user2@server2:/path/
+
+  USING SSH CONFIG ALIAS:
+    scp file.txt myserver:/home/dinesh/    # uses config settings!
+
+  RSYNC (Better Alternative to SCP):
+    rsync -avz file.txt dinesh@192.168.1.10:/home/dinesh/
+    rsync -avz --progress folder/ myserver:/var/www/
+    → -a : archive mode (preserves permissions, timestamps)
+    → -v : verbose
+    → -z : compress during transfer
+    → Only transfers CHANGED files (much faster than scp!)
+
+---------------------------------------------------------------
+12. SSH TUNNELING & PORT FORWARDING
+---------------------------------------------------------------
+
+  LOCAL PORT FORWARDING:
+    ssh -L local-port:target-host:target-port user@ssh-server
+
+    Example: Access remote database locally
+    ssh -L 3306:localhost:3306 dinesh@192.168.1.10
+    → Now connect to localhost:3306 = connects to remote MySQL!
+
+  REMOTE PORT FORWARDING:
+    ssh -R remote-port:local-host:local-port user@ssh-server
+
+    Example: Expose local web server publicly
+    ssh -R 8080:localhost:3000 dinesh@publicserver.com
+    → Public server's port 8080 = your local port 3000
+
+  DYNAMIC PORT FORWARDING (SOCKS Proxy):
+    ssh -D 1080 user@ssh-server
+    → Creates SOCKS proxy on localhost:1080
+
+  JUMP HOST (ProxyJump):
+    ssh -J jumphost user@target-server
+    → Connect to target through jump host
+
+    In config file:
+    Host target
+        HostName 10.0.0.5
+        User dinesh
+        ProxyJump jumphost
+
+---------------------------------------------------------------
+13. REAL-WORLD DEVOPS SSH SCENARIOS
+---------------------------------------------------------------
+
+  SCENARIO 1 — AWS EC2 Connection:
+    ssh -i ~/.ssh/aws-key.pem ubuntu@ec2-ip-address
+    OR in config:
+    Host ec2
+        HostName ec2-ip
+        User ubuntu
+        IdentityFile ~/.ssh/aws-key.pem
+    Then: ssh ec2
+
+  SCENARIO 2 — Deploy Script Using SSH:
+    #!/bin/bash
+    ssh deployer@production "
+        cd /var/www/app
+        git pull origin main
+        npm install
+        pm2 restart app
+    "
+
+  SCENARIO 3 — CI/CD Pipeline SSH:
+    # GitHub Actions / Jenkins uses SSH keys
+    # Store private key as secret
+    # Use ssh-copy-id to add public key to server
+    # Pipeline connects passwordlessly for deployment
+
+  SCENARIO 4 — Multiple Server Management:
+    # Manage multiple servers with one config
+    Host prod-web
+        HostName 10.0.1.10
+        User deployer
+        IdentityFile ~/.ssh/prod_key
+
+    Host prod-db
+        HostName 10.0.1.20
+        User dbadmin
+        IdentityFile ~/.ssh/prod_key
+
+    Host staging
+        HostName 10.0.2.10
+        User deployer
+        IdentityFile ~/.ssh/staging_key
+
+  SCENARIO 5 — Secure Key for AWS (PEM file):
+    chmod 400 aws-key.pem           # AWS requires 400 not 600
+    ssh -i aws-key.pem ubuntu@ip
+
+---------------------------------------------------------------
+14. MY MISTAKE TODAY — REAL LEARNING!
+---------------------------------------------------------------
+
+  WHAT I DID WRONG:
+
+    # I set IdentityFile to PUBLIC key by mistake!
+    Host myserver
+        HostName 192.168.1.10
+        User dinesh
+        IdentityFile ~/.ssh/id_rsa.pub    ← WRONG! (public key)
+
+  WHAT HAPPENED:
+    SSH kept failing to authenticate.
+    I spent about 10 minutes checking:
+    → Server permissions ❌ (they were fine)
+    → Network connection ❌ (that was fine too)
+    → Server config ❌ (also fine)
+    → Finally noticed .pub extension in IdentityFile!
+
+  THE FIX:
+
+    Host myserver
+        HostName 192.168.1.10
+        User dinesh
+        IdentityFile ~/.ssh/id_rsa        ← CORRECT! (private key)
+
+  ROOT CAUSE:
+    IdentityFile ALWAYS points to PRIVATE key.
+    Public key (.pub) goes to SERVER's authorized_keys.
+    Private key (.pem or id_rsa) stays on CLIENT machine.
+
+  GOLDEN RULE TO REMEMBER:
+
+    CLIENT machine keeps  → PRIVATE key (id_rsa)
+    SERVER machine keeps  → PUBLIC key  (authorized_keys)
+
+    IdentityFile = path to PRIVATE key ONLY!
+    Never use .pub file as IdentityFile!
+
+---------------------------------------------------------------
+15. KEY TAKEAWAYS FROM DAY 10
+---------------------------------------------------------------
+
+  [01] SSH = Secure Shell. Default port 22. Encrypts everything.
+
+  [02] Two auth methods: Password (less secure) vs Keys (standard)
+       Always use SSH keys in production!
+
+  [03] ssh-keygen generates a KEY PAIR:
+       id_rsa     = private (YOUR machine only, NEVER share!)
+       id_rsa.pub = public  (copy to server's authorized_keys)
+
+  [04] Ed25519 is more secure & modern than RSA.
+       Use: ssh-keygen -t ed25519
+
+  [05] ssh-copy-id is the easiest way to copy public key to server.
+       It sets correct permissions automatically!
+
+  [06] SSH permissions are CRITICAL — wrong perms = SSH breaks!
+       ~/.ssh = 700 | id_rsa = 600 | id_rsa.pub = 644
+
+  [07] ~/.ssh/config saves time! Create host aliases and
+       connect with just: ssh myserver
+
+  [08] IdentityFile ALWAYS points to PRIVATE key (id_rsa)
+       NEVER to public key (.pub) ← my mistake today!
+
+  [09] Server hardening essentials:
+       PermitRootLogin no
+       PasswordAuthentication no
+       AllowUsers dinesh
+       Port 2222
+
+  [10] Always test sshd config before restarting:
+       sudo sshd -t
+
+  [11] Keep ONE terminal open while editing sshd_config!
+       Wrong config + restart = locked out of server!
+
+  [12] SSH is used in EVERY DevOps workflow:
+       AWS EC2, CI/CD pipelines, deployments, automation
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  KEY GENERATION:
+    ssh-keygen -t rsa -b 4096          # RSA 4096-bit
+    ssh-keygen -t ed25519              # Ed25519 (recommended)
+    ssh-keygen -t rsa -b 4096 -C "me@email.com" -f ~/.ssh/mykey
+
+  CONNECTION:
+    ssh user@host                      # password auth
+    ssh -i ~/.ssh/id_rsa user@host     # key auth
+    ssh -p 2222 user@host              # custom port
+    ssh myserver                       # using config alias
+
+  COPY KEY TO SERVER:
+    ssh-copy-id user@host
+    ssh-copy-id -i ~/.ssh/id_rsa.pub user@host
+
+  PERMISSIONS:
+    chmod 700 ~/.ssh/
+    chmod 600 ~/.ssh/id_rsa
+    chmod 644 ~/.ssh/id_rsa.pub
+    chmod 600 ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/config
+
+  FILE TRANSFER:
+    scp file.txt user@host:/path/
+    scp -r folder/ user@host:/path/
+    rsync -avz folder/ user@host:/path/
+
+  SERVICE MANAGEMENT:
+    sudo systemctl restart sshd
+    sudo systemctl status sshd
+    sudo sshd -t                       # test config syntax
+
+  CLIENT CONFIG (~/.ssh/config):
+    Host alias
+        HostName ip-or-domain
+        User username
+        IdentityFile ~/.ssh/id_rsa     # PRIVATE key always!
+        Port 22
+
+===============================================================
+   Day 10 Complete! On to Day 11 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
