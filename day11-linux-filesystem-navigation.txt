@@ -1,0 +1,523 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 11
+   Topic: Linux Filesystem, Navigation, File Operations
+          & Text Editors
+===============================================================
+
+Author   : Dinesh
+Day      : 11 / 120
+Topic    : Linux FHS, Shell & Bash Internals, Navigation,
+           File Operations, File Viewing & Text Editors
+Phase    : Phase 1 — Topics 2, 4, 5, 6, 7
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  Linux Filesystem Hierarchy (FHS)
+  2.  Terminal, Shell Types & Bash Internals
+  3.  Absolute vs Relative Paths & Navigation
+  4.  File Operations Deep Dive
+  5.  File Viewing & Text Editors
+  6.  Key Takeaways from Day 11
+
+---------------------------------------------------------------
+1. LINUX FILESYSTEM HIERARCHY (FHS)
+---------------------------------------------------------------
+
+  Everything in Linux starts from / (root directory)
+  One tree. Everything connected. Nothing outside of it.
+
+  DIRECTORY STRUCTURE:
+
+  /
+  ├── etc/        → System-wide configuration files
+  ├── var/        → Variable data (logs, databases, mail)
+  │   └── log/   → Application & system logs
+  ├── home/       → User home directories
+  │   └── dinesh/→ Your personal home directory
+  ├── root/       → Root user home directory
+  ├── bin/        → Essential user commands (ls, cp, mv)
+  ├── sbin/       → Essential system commands (fdisk, iptables)
+  ├── usr/        → User programs & utilities
+  │   ├── bin/   → Non-essential user commands
+  │   └── local/ → Locally installed software
+  ├── tmp/        → Temporary files (auto-cleared on reboot!)
+  ├── dev/        → Device files (disks, terminals, USB)
+  ├── proc/       → Virtual FS — live kernel & process info
+  ├── sys/        → Virtual FS — hardware & driver info
+  ├── mnt/        → Temporary mount points
+  ├── media/      → Auto-mounted removable media (USB, CD)
+  ├── opt/        → Optional/third-party software
+  ├── boot/       → Boot loader files (kernel, grub)
+  └── lib/        → Shared libraries for /bin and /sbin
+
+  KEY DIRECTORIES FOR DEVOPS:
+
+  DIRECTORY         USE CASE
+  ---------         --------
+  /etc/nginx/       Nginx web server config
+  /etc/ssh/         SSH server config
+  /etc/cron.d/      Cron job files
+  /var/log/         App & system logs (tail -f here!)
+  /var/www/         Web application files
+  /tmp/             Temp scripts & test files
+  /proc/cpuinfo     Live CPU information
+  /proc/meminfo     Live memory information
+  /proc/pid/        Running process details
+  /dev/sda          First hard disk device file
+  /home/username/   User personal files & configs
+
+  IMPORTANT NOTES:
+  → /proc and /sys are NOT real directories on disk
+    They are virtual filesystems showing live kernel data!
+  → /tmp contents are cleared on every reboot
+  → /etc is where ALL configuration files live
+  → /var/log is where ALL logs live — know this well!
+
+---------------------------------------------------------------
+2. TERMINAL, SHELL TYPES & BASH INTERNALS
+---------------------------------------------------------------
+
+  UNDERSTANDING THE LAYERS:
+
+    Physical Hardware
+         ↓
+    Operating System (Linux Kernel)
+         ↓
+    Terminal Emulator (your terminal app)
+         ↓
+    Shell (bash, zsh, sh, fish)
+         ↓
+    Your Commands
+
+  TERMINAL vs SHELL:
+    Terminal  → The window/interface you type in
+    Shell     → The program that reads & executes your commands
+
+  SHELL TYPES:
+
+  SHELL    FULL NAME              NOTES
+  -----    ---------              -----
+  bash     Bourne Again Shell     Default on most Linux distros
+  sh       Bourne Shell           Original shell, minimal features
+  zsh      Z Shell                Powerful, default on macOS
+  fish     Friendly Interactive   Beginner friendly, smart suggestions
+  ksh      Korn Shell             Used in enterprise environments
+  dash     Debian Almquist Shell  Faster than bash, used for scripts
+
+  CHECK CURRENT SHELL:
+    echo $SHELL              → shows default shell path
+    echo $0                  → shows current running shell
+    cat /etc/shells          → list all installed shells
+    chsh -s /bin/zsh         → change default shell to zsh
+
+  BASH INTERNALS — STARTUP FILES:
+
+  FILE                  WHEN IT LOADS
+  ----                  -------------
+  /etc/profile          Login shell — loads for ALL users first
+  /etc/bash.bashrc      Interactive shell — loads for ALL users
+  ~/.bash_profile        Login shell — loads for current user
+  ~/.bashrc             Interactive shell — loads for current user
+  ~/.bash_logout        Executes when user logs OUT
+
+  LOGIN SHELL ORDER:
+    /etc/profile → ~/.bash_profile → (sources ~/.bashrc)
+
+  INTERACTIVE SHELL ORDER:
+    /etc/bash.bashrc → ~/.bashrc
+
+  RULE TO REMEMBER:
+    → Add custom PATH, exports, aliases → ~/.bashrc
+    → Add login-specific settings      → ~/.bash_profile
+    → Add system-wide settings         → /etc/profile
+
+  USEFUL BASH VARIABLES:
+
+  VARIABLE      VALUE
+  --------      -----
+  $HOME         Your home directory path
+  $USER         Current username
+  $SHELL        Path to current shell
+  $PATH         Directories searched for commands
+  $OLDPWD       Previous working directory
+  $PS1          Your command prompt format
+  $HISTFILE     Location of command history file
+  $HISTSIZE     Number of commands stored in history
+  $$            Current shell process ID (PID)
+  $?            Exit code of last command (0=success)
+
+  BASH HISTORY:
+    history                  → show command history
+    history | grep ssh       → search history
+    !!                       → repeat last command
+    !ssh                     → repeat last command starting with ssh
+    Ctrl + R                 → reverse search history
+    ~/.bash_history          → history file location
+
+---------------------------------------------------------------
+3. ABSOLUTE vs RELATIVE PATHS & NAVIGATION
+---------------------------------------------------------------
+
+  PATH TYPES:
+
+  ABSOLUTE PATH:
+    → Always starts with / (root)
+    → Full path from root to destination
+    → Works from anywhere in the system
+    Examples:
+      /home/dinesh/projects/
+      /etc/nginx/nginx.conf
+      /var/log/syslog
+
+  RELATIVE PATH:
+    → Does NOT start with /
+    → Based on your current location
+    → Shorter but location-dependent
+    Examples:
+      ./scripts/deploy.sh    (current dir)
+      ../config/app.conf     (one level up)
+      documents/notes.txt    (inside current dir)
+
+  SPECIAL PATH SYMBOLS:
+
+  SYMBOL    MEANING
+  ------    -------
+  .         Current directory
+  ..        Parent directory (one level up)
+  ~         Home directory ($HOME)
+  -         Previous directory ($OLDPWD)
+  /         Root directory
+
+  NAVIGATION COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  pwd                   Print working directory (where am I?)
+  cd /etc               Go to /etc (absolute path)
+  cd documents          Go to documents (relative path)
+  cd ~                  Go to home directory
+  cd -                  Go to previous directory (very useful!)
+  cd ..                 Go one level up
+  cd ../..              Go two levels up
+  cd /                  Go to root directory
+
+  LISTING FILES — ls OPTIONS:
+
+  COMMAND       WHAT IT SHOWS
+  -------       -------------
+  ls            Basic file list
+  ls -l         Long format (permissions, size, date)
+  ls -a         All files including hidden (starting with .)
+  ls -la        Long format + hidden files
+  ls -lh        Human readable file sizes (KB, MB, GB)
+  ls -lt        Sort by modification time (newest first)
+  ls -lr        Reverse order listing
+  ls -R         Recursive listing (all subdirectories)
+  ls -i         Show inode numbers
+  ls --color    Colored output by file type
+
+  DIRECTORY EXPLORATION:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  tree                  Visual directory tree
+  tree -L 2             Tree limited to 2 levels deep
+  tree -a               Tree including hidden files
+  tree -d               Show directories only
+  du -sh folder/        Show folder total size
+  du -sh *              Show size of everything in current dir
+  find . -type f        Find all files in current directory
+  ls -ld /etc           Show directory info (not contents)
+
+---------------------------------------------------------------
+4. FILE OPERATIONS DEEP DIVE
+---------------------------------------------------------------
+
+  CREATING FILES & DIRECTORIES:
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  touch file.txt            Create empty file
+  touch file1 file2 file3   Create multiple files at once
+  touch -t 202501010000 f   Create file with specific timestamp
+  mkdir devops              Create directory
+  mkdir -p a/b/c/d          Create nested directories (no error!)
+  mkdir -m 755 secured/     Create directory with permissions
+
+  COPYING FILES & DIRECTORIES:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  cp file.txt backup.txt        Copy file to new name
+  cp file.txt /tmp/             Copy file to directory
+  cp -r folder/ destination/    Copy folder recursively
+  cp -p file.txt copy.txt       Copy & preserve permissions
+  cp -u source dest             Copy only if source is newer
+  cp -v file.txt /tmp/          Verbose copy (shows progress)
+  cp -i file.txt dest/          Interactive (asks before overwrite)
+
+  MOVING & RENAMING:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  mv file.txt newname.txt       Rename file
+  mv file.txt /new/location/    Move file to new location
+  mv folder/ /new/path/         Move entire folder
+  mv -i source dest             Ask before overwrite
+  mv -v source dest             Verbose move
+
+  DELETING FILES & DIRECTORIES:
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  rm file.txt               Delete file (NO confirmation!)
+  rm -i file.txt            Delete with confirmation prompt
+  rm -f file.txt            Force delete (no error if missing)
+  rm -r folder/             Delete folder recursively
+  rm -rf folder/            Force delete folder (DANGEROUS!)
+  rmdir emptydir/           Delete EMPTY directory only
+
+  ⚠️  WARNING — rm -rf has NO undo! Always double check!
+  ✅  SAFE PRACTICE: use rm -i for important deletions
+
+  LINKS — HARD & SYMBOLIC:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  ln file.txt hardlink.txt      Create hard link
+  ln -s file.txt symlink.txt    Create symbolic (soft) link
+  ln -s /etc/nginx link-nginx   Symlink to directory
+  ls -li                        Show inode numbers (hard links share!)
+  readlink symlink.txt          Show where symlink points to
+
+  HARD LINK vs SYMBOLIC LINK:
+
+  FEATURE               HARD LINK          SYMBOLIC LINK
+  -------               ---------          -------------
+  Points to             Same inode         Original file path
+  Original deleted      Still works!       Breaks! (dangling link)
+  Cross filesystem      No                 Yes
+  Link to directory     No                 Yes
+  Shows in ls -l        Same as file       Shows → target
+  Inode number          Same as original   Different inode
+  Use case              File backups       Shortcuts, /usr/bin links
+
+---------------------------------------------------------------
+5. FILE VIEWING & TEXT EDITORS
+---------------------------------------------------------------
+
+  FILE VIEWING COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  cat file.txt          Display entire file at once
+  cat -n file.txt       Display with line numbers
+  cat file1 file2       Concatenate two files
+  less file.txt         Scroll through file (q to quit)
+  more file.txt         Scroll forward only (older tool)
+  head file.txt         First 10 lines (default)
+  head -n 20 file.txt   First 20 lines
+  tail file.txt         Last 10 lines (default)
+  tail -n 20 file.txt   Last 20 lines
+  tail -f app.log       LIVE log monitoring (follow mode!)
+  tail -F app.log       Follow even if file rotated
+  wc file.txt           Count lines, words, characters
+  wc -l file.txt        Count lines only
+  wc -w file.txt        Count words only
+
+  LESS NAVIGATION (very useful!):
+
+  KEY           ACTION
+  ---           ------
+  Space         Next page
+  b             Previous page
+  g             Go to beginning
+  G             Go to end
+  /searchterm   Search forward
+  n             Next search result
+  N             Previous search result
+  q             Quit less
+
+  TEXT EDITORS:
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ VIM — Vi Improved                                        │
+  ├──────────────────────────────────────────────────────────┤
+  │ Industry standard for DevOps. Available on ALL servers.  │
+  │ Servers have no GUI — vim is your only option often!     │
+  └──────────────────────────────────────────────────────────┘
+
+  VIM MODES:
+    Normal Mode  → default mode (navigate & commands)
+    Insert Mode  → type and edit text
+    Visual Mode  → select text
+    Command Mode → save, quit, search (starts with :)
+
+  VIM ESSENTIAL COMMANDS:
+
+  COMMAND     ACTION
+  -------     ------
+  i           Enter insert mode (before cursor)
+  a           Enter insert mode (after cursor)
+  o           New line below & enter insert mode
+  O           New line above & enter insert mode
+  Esc         Return to normal mode
+  :w          Save file
+  :q          Quit vim
+  :wq         Save and quit
+  :q!         Quit WITHOUT saving (force)
+  :wq!        Force save and quit
+  :x          Save and quit (same as :wq)
+
+  VIM NAVIGATION (Normal Mode):
+
+  KEY         MOVEMENT
+  ---         --------
+  h           Move left
+  j           Move down
+  k           Move up
+  l           Move right
+  gg          Go to first line
+  G           Go to last line
+  :n          Go to line number n (e.g. :25)
+  w           Jump forward one word
+  b           Jump backward one word
+  0           Go to beginning of line
+  $           Go to end of line
+
+  VIM EDITING (Normal Mode):
+
+  COMMAND     ACTION
+  -------     ------
+  dd          Delete current line
+  yy          Copy (yank) current line
+  p           Paste below current line
+  u           Undo last action
+  Ctrl+r      Redo
+  /word       Search for word
+  n           Next search result
+  :%s/old/new/g  Replace all occurrences
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ NANO — Simple Terminal Editor                            │
+  ├──────────────────────────────────────────────────────────┤
+  │ Beginner friendly. Shows shortcuts at bottom.            │
+  │ Good for quick edits. Not as powerful as vim.            │
+  └──────────────────────────────────────────────────────────┘
+
+  NANO COMMANDS:
+
+  SHORTCUT      ACTION
+  --------      ------
+  nano file     Open file in nano
+  Ctrl + O      Save file (Write Out)
+  Ctrl + X      Exit nano
+  Ctrl + W      Search in file
+  Ctrl + K      Cut current line
+  Ctrl + U      Paste cut line
+  Ctrl + G      Show help
+  Ctrl + C      Show cursor position
+
+  VIM vs NANO — WHEN TO USE:
+
+  VIM                              NANO
+  ---                              ----
+  Complex file editing             Quick simple edits
+  Large files                      Small config changes
+  Remote servers (always there)    Beginner friendly edits
+  DevOps production work           Learning & experimenting
+  Scripting & automation           One-time file changes
+
+---------------------------------------------------------------
+6. KEY TAKEAWAYS FROM DAY 11
+---------------------------------------------------------------
+
+  [01] Linux filesystem starts at / (root). Every file & device
+       has a place in this one tree structure.
+
+  [02] /etc = configs | /var/log = logs | /tmp = temp files
+       Know these 3 paths — you'll use them every single day!
+
+  [03] /proc and /sys are virtual filesystems showing LIVE
+       kernel data. Not real files on disk!
+
+  [04] .bashrc loads every new terminal.
+       .bash_profile loads on login.
+       Always put aliases & PATH in .bashrc!
+
+  [05] cd - is underrated! Instantly goes back to previous
+       directory. Use it constantly.
+
+  [06] Always use mkdir -p to create nested directories.
+       Avoids errors when parent doesn't exist.
+
+  [07] rm -rf has NO undo. No confirmation.
+       ALWAYS double check before running it!
+
+  [08] Hard link = same inode, survives original deletion.
+       Symbolic link = pointer, breaks if original deleted.
+
+  [09] tail -f is your best friend for live log monitoring
+       in production! Use it to debug running apps.
+
+  [10] Vim is NOT optional for DevOps.
+       Servers have no GUI — learn vim basics now!
+       Minimum to know: i → type → Esc → :wq
+
+  [11] less is better than cat for large files.
+       Use / to search inside less — very powerful!
+
+  [12] $OLDPWD stores your last directory automatically.
+       cd - uses this to take you back instantly.
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  NAVIGATION:
+    pwd            → where am I?
+    cd ~           → go home
+    cd -           → go to previous directory
+    ls -la         → list all with permissions
+    tree -L 2      → visual 2-level tree
+
+  FILE OPERATIONS:
+    touch file           → create file
+    mkdir -p a/b/c       → create nested dirs
+    cp -r src/ dest/     → copy folder
+    mv old new           → move or rename
+    rm -rf folder/       → delete folder (careful!)
+    ln -s file link      → create symlink
+
+  FILE VIEWING:
+    cat file             → show file
+    less file            → scroll through file
+    head -n 10 file      → first 10 lines
+    tail -f file         → live monitoring
+    wc -l file           → count lines
+
+  VIM QUICK REFERENCE:
+    vim file     → open file
+    i            → insert mode
+    Esc          → normal mode
+    :wq          → save and quit
+    :q!          → quit without saving
+    dd           → delete line
+    yy           → copy line
+    p            → paste
+    u            → undo
+
+  BASH:
+    echo $SHELL          → current shell
+    echo $HOME           → home directory
+    history              → command history
+    Ctrl + R             → search history
+    cat /etc/shells      → list all shells
+
+===============================================================
+   Day 11 Complete! On to Day 12 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
