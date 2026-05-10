@@ -1,0 +1,545 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 12
+   Topic: Linux Processes, Process Management &
+          System Monitoring / Performance
+===============================================================
+
+Author   : Dinesh
+Day      : 12 / 120
+Topic    : Process Management, Process Control & Signals,
+           System Monitoring & Performance
+Phase    : Phase 4 — Topics 1, 2, 3
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  What is a Process?
+  2.  Process Management Deep Dive
+  3.  Process Control & Signals
+  4.  Job Control (fg, bg, jobs)
+  5.  Process Priority — nice & renice
+  6.  nohup — Run Beyond Logout
+  7.  System Monitoring & Performance
+  8.  Key Takeaways from Day 12
+
+---------------------------------------------------------------
+1. WHAT IS A PROCESS?
+---------------------------------------------------------------
+
+  A process is any running instance of a program.
+  Every command you run becomes a process in Linux.
+
+  Every process has:
+  → PID  (Process ID)     : unique identifier
+  → PPID (Parent PID)     : who started this process
+  → UID  (User ID)        : who owns this process
+  → Priority & Nice value : how much CPU it gets
+  → State                 : what it is currently doing
+
+  PROCESS STATES:
+
+  STATE    SYMBOL    MEANING
+  -----    ------    -------
+  Running    R       Actively using CPU right now
+  Sleeping   S       Waiting for something (I/O, event)
+  Stopped    T       Paused (Ctrl+Z or SIGSTOP signal)
+  Zombie     Z       Finished but parent not cleaned it up
+  Dead       X       Completely terminated
+
+  PROCESS TYPES:
+
+  Foreground Process → runs in terminal, takes user input
+  Background Process → runs behind terminal (using &)
+  Daemon Process     → system service running in background
+                       (nginx, sshd, cron etc.)
+  Zombie Process     → dead process not yet removed from table
+
+  /proc FILESYSTEM — Every Process as a File:
+
+  /proc/              → virtual filesystem, live kernel data
+  /proc/PID/          → folder for every running process!
+  /proc/PID/status    → process status details
+  /proc/PID/cmdline   → command that started the process
+  /proc/PID/maps      → memory map of the process
+  /proc/PID/fd/       → open file descriptors
+  /proc/cpuinfo       → CPU details
+  /proc/meminfo       → memory details
+  /proc/uptime        → system uptime
+
+  Example:
+    cat /proc/1/status       → details of init/systemd process
+    ls /proc/$$              → details of current shell process
+
+---------------------------------------------------------------
+2. PROCESS MANAGEMENT DEEP DIVE
+---------------------------------------------------------------
+
+  VIEWING PROCESSES:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  ps                Show processes of current terminal session
+  ps aux            Show ALL processes from ALL users
+  ps -ef            Full format listing of all processes
+  ps aux --sort=-%cpu  Sort by CPU usage (highest first)
+  ps aux --sort=-%mem  Sort by memory usage (highest first)
+  ps -u username    Show processes of specific user
+  ps -p PID         Show specific process by PID
+
+  UNDERSTANDING ps aux OUTPUT:
+
+  USER    PID   %CPU  %MEM  VSZ    RSS   TTY  STAT START  TIME  COMMAND
+  ------  ----  ----  ----  -----  ----  ---  ---- -----  ----  -------
+  root    1     0.0   0.1   16952  1234  ?    Ss   10:00  0:01  /sbin/init
+  dinesh  1234  2.5   1.2   45678  5678  pts0 S    10:05  0:05  bash
+
+  COLUMNS EXPLAINED:
+  USER    → process owner
+  PID     → process ID
+  %CPU    → CPU usage percentage
+  %MEM    → memory usage percentage
+  VSZ     → virtual memory size (KB)
+  RSS     → actual physical memory used (KB)
+  TTY     → terminal associated (? = no terminal/daemon)
+  STAT    → process state (R=running S=sleeping Z=zombie)
+  START   → when process started
+  TIME    → total CPU time used
+  COMMAND → command that started the process
+
+  FINDING PROCESSES:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  pgrep nginx           Find PID of process by name
+  pgrep -l nginx        Find PID and name
+  pgrep -u dinesh       Find all PIDs owned by user
+  pgrep -a nginx        Show full command line
+  pidof nginx           Get PID of running program
+  pstree                Show process tree (parent-child)
+  pstree -p             Show process tree with PIDs
+  pstree -u             Show process tree with usernames
+  pstree PID            Show tree from specific process
+
+  REAL TIME PROCESS MONITORING — top:
+
+  top                   → launch top
+  top -u username       → show only user's processes
+  top -p PID            → monitor specific process
+  top -n 5              → refresh 5 times then exit
+  top -b -n 1 > out.txt → batch mode, save to file
+
+  top INTERACTIVE KEYS:
+  KEY     ACTION
+  ---     ------
+  q       Quit top
+  k       Kill a process (enter PID)
+  r       Renice a process
+  M       Sort by memory usage
+  P       Sort by CPU usage
+  T       Sort by time
+  h       Help
+  1       Show individual CPU cores
+  f       Add/remove display fields
+  z       Color display
+
+  UNDERSTANDING top OUTPUT:
+  top - 10:30:00 up 2 days, 3:45, 2 users, load average: 0.15, 0.10, 0.05
+
+  load average: 0.15, 0.10, 0.05
+  → 1 minute avg, 5 minute avg, 15 minute avg
+  → if load > number of CPU cores = server is struggling!
+  → check CPU cores: nproc OR grep -c processor /proc/cpuinfo
+
+  REAL TIME MONITORING — htop (Better than top!):
+
+  htop                  → launch htop (install: apt install htop)
+  htop -u username      → show specific user processes
+  htop -p PID1,PID2     → monitor specific PIDs
+
+  htop INTERACTIVE KEYS:
+  KEY       ACTION
+  ---       ------
+  F1        Help
+  F2        Setup/settings
+  F3        Search process
+  F4        Filter processes
+  F5        Tree view
+  F6        Sort by column
+  F9        Kill process
+  F10       Quit
+  Space     Tag/select process
+  U         Show only one user's processes
+
+---------------------------------------------------------------
+3. PROCESS CONTROL & SIGNALS
+---------------------------------------------------------------
+
+  WHAT ARE SIGNALS?
+  Signals are messages sent to processes to control them.
+  Like tapping someone on the shoulder vs shouting STOP!
+
+  COMMON SIGNALS:
+
+  SIGNAL    NUMBER    WHAT IT DOES
+  ------    ------    ------------
+  SIGHUP      1       Reload config (hangup)
+  SIGINT      2       Interrupt (like Ctrl+C)
+  SIGQUIT     3       Quit with core dump
+  SIGKILL     9       FORCE kill — cannot be ignored!
+  SIGTERM    15       Graceful terminate (default kill signal)
+  SIGSTOP    19       Pause process — cannot be ignored!
+  SIGCONT    18       Continue paused process
+  SIGUSR1    10       User defined signal 1
+  SIGUSR2    12       User defined signal 2
+
+  SIGTERM vs SIGKILL:
+  → SIGTERM (15) → politely asks process to stop
+                   process can clean up before dying
+                   process CAN ignore this signal
+  → SIGKILL  (9) → forces immediate termination
+                   no cleanup, no save, just dead
+                   process CANNOT ignore this signal
+
+  KILL COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  kill PID              Send SIGTERM to process (graceful)
+  kill -9 PID           Send SIGKILL (force kill)
+  kill -15 PID          Send SIGTERM explicitly
+  kill -1 PID           Send SIGHUP (reload config)
+  kill -l               List all available signals
+  killall nginx         Kill all processes named nginx
+  killall -9 nginx      Force kill all nginx processes
+  killall -u dinesh     Kill all processes of user dinesh
+  pkill nginx           Kill process by name pattern
+  pkill -9 nginx        Force kill by name
+  pkill -u username     Kill all processes of a user
+  pkill -t pts/0        Kill all processes on terminal
+
+  KEYBOARD SHORTCUTS FOR SIGNALS:
+  Ctrl + C  → SIGINT  (interrupt/stop running process)
+  Ctrl + Z  → SIGSTOP (pause/suspend running process)
+  Ctrl + \  → SIGQUIT (quit with core dump)
+
+---------------------------------------------------------------
+4. JOB CONTROL (fg, bg, jobs)
+---------------------------------------------------------------
+
+  WHAT IS JOB CONTROL?
+  Ability to manage multiple processes from one terminal.
+  Pause, resume, send to background, bring to foreground.
+
+  COMMANDS:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  command &         Start process directly in background
+  Ctrl + Z          Pause/suspend running foreground process
+  jobs              List all current background/stopped jobs
+  jobs -l           List jobs with PIDs
+  fg                Bring most recent background job to front
+  fg %1             Bring job number 1 to foreground
+  bg                Resume most recent stopped job in background
+  bg %2             Resume job number 2 in background
+  disown            Remove job from shell's job table
+  disown -h %1      Keep job running even after shell closes
+
+  PRACTICAL EXAMPLE:
+
+  $ ping google.com          # start foreground process
+  Ctrl + Z                   # pause it
+  [1]+  Stopped    ping google.com
+  $ jobs                     # see paused jobs
+  [1]+  Stopped    ping google.com
+  $ bg %1                    # resume in background
+  [1]+ ping google.com &
+  $ fg %1                    # bring back to foreground
+  $ kill %1                  # kill the job
+
+---------------------------------------------------------------
+5. PROCESS PRIORITY — nice & renice
+---------------------------------------------------------------
+
+  WHAT IS PROCESS PRIORITY?
+  Linux decides how much CPU time each process gets.
+  Priority is controlled by the "nice" value.
+
+  NICE VALUE RANGE:
+  -20 → Highest priority (gets most CPU)
+    0 → Default priority
+  +19 → Lowest priority (gets least CPU)
+
+  Think of it as: higher nice value = nicer to others = less CPU
+
+  COMMANDS:
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  nice -n 10 command        Start command with nice value 10
+  nice -n -10 command       Start with high priority (needs sudo)
+  renice -n 5 -p PID        Change priority of running process
+  renice -n -5 -p PID       Increase priority (needs sudo)
+  renice -n 10 -u username  Change priority of all user processes
+  ps aux -o pid,ni,comm     Show PID, nice value & command name
+  top                       Shows NI column (nice value)
+
+  PRACTICAL USE CASES:
+  → Run backup script at low priority so server stays responsive
+    nice -n 19 ./backup.sh
+  → Give more CPU to critical process
+    sudo renice -n -10 -p PID
+  → Find process nice values
+    ps -eo pid,ni,comm | sort -k2
+
+---------------------------------------------------------------
+6. nohup — RUN BEYOND LOGOUT
+---------------------------------------------------------------
+
+  WHAT IS nohup?
+  Normally when you close terminal or logout, all your
+  processes receive SIGHUP signal and die.
+  nohup (No Hang Up) makes process immune to SIGHUP.
+  Process keeps running even after you disconnect!
+
+  COMMANDS:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  nohup command &               Run command, immune to hangup
+  nohup ./deploy.sh &           Run deploy script in background
+  nohup command > out.txt &     Save output to custom file
+  nohup command >> out.txt 2>&1 & Save stdout AND stderr
+
+  Default output file: nohup.out (in current directory)
+
+  PRACTICAL DEVOPS EXAMPLE:
+
+  # Deploy script that must keep running after SSH disconnect
+  nohup ./deploy.sh > /var/log/deploy.log 2>&1 &
+  echo "Deploy started with PID: $!"
+
+  # Check if still running
+  ps aux | grep deploy.sh
+
+  # View live output
+  tail -f /var/log/deploy.log
+
+  nohup vs & vs disown:
+  &       → background but dies on terminal close
+  nohup & → background AND survives terminal close
+  disown  → remove already-running job from shell control
+
+---------------------------------------------------------------
+7. SYSTEM MONITORING & PERFORMANCE
+---------------------------------------------------------------
+
+  TOP LEVEL MONITORING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  top               Live CPU, memory, process monitoring
+  htop              Better version of top (colored, easier)
+  uptime            System uptime + load averages
+  w                 Who is logged in + what they're doing
+
+  MEMORY MONITORING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  free              Show RAM usage in bytes
+  free -h           Human readable (MB, GB)
+  free -m           Show in megabytes
+  free -s 2         Update every 2 seconds
+  cat /proc/meminfo → Detailed memory information
+
+  UNDERSTANDING free -h OUTPUT:
+               total    used    free    shared  buff/cache  available
+  Mem:          7.7G    2.1G    1.2G    234M      4.4G        5.1G
+  Swap:         2.0G    0.0G    2.0G
+
+  → available = memory actually free for new processes
+  → buff/cache = memory used by kernel (can be freed if needed)
+  → Swap being used = RAM is full, performance will suffer!
+
+  DISK MONITORING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  df                Show disk space usage (bytes)
+  df -h             Human readable disk usage
+  df -i             Show inode usage
+  df -T             Show filesystem type
+  df -h /var        Show specific partition
+  du                Show directory space usage
+  du -h folder/     Human readable folder size
+  du -sh folder/    Summary of folder total size
+  du -sh *          Size of everything in current dir
+  du -ah folder/    All files with sizes
+  du --max-depth=1  One level deep only
+
+  COMMON DISK ISSUE — "No space left" debugging:
+    df -h              → find which partition is full
+    du -sh /*          → find which dir uses most space
+    du -sh /var/*      → dig deeper into /var
+    du -sh /var/log/*  → find biggest log files
+    ls -lhS /var/log/  → sort logs by size
+
+  CPU & PERFORMANCE MONITORING:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  vmstat               Virtual memory statistics
+  vmstat 2             Update every 2 seconds
+  vmstat 2 10          Update every 2s, show 10 times
+  iostat               CPU and disk I/O statistics
+  iostat -x            Extended disk statistics
+  iostat 2             Update every 2 seconds
+  mpstat               Per-CPU statistics
+  mpstat -P ALL 2      Show all CPU cores every 2s
+  sar                  System activity reporter
+  sar -u 2 5           CPU usage every 2s, 5 times
+  sar -r 2 5           Memory usage every 2s, 5 times
+  sar -d 2 5           Disk activity every 2s, 5 times
+  lscpu                CPU architecture information
+  nproc                Number of CPU cores
+
+  UNDERSTANDING vmstat OUTPUT:
+  procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
+   r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
+   1  0      0 1234567  12345 456789    0    0     5    10  100  200  5  2 90  3  0
+
+  KEY COLUMNS:
+  r  → processes waiting for CPU (high = CPU bottleneck)
+  b  → processes in uninterruptible sleep (high = I/O issue)
+  si → swap in (memory swapping in from disk)
+  so → swap out (memory swapping to disk — BAD!)
+  us → user CPU time %
+  sy → system/kernel CPU time %
+  id → idle CPU %
+  wa → waiting for I/O % (high = disk bottleneck)
+
+  NETWORK MONITORING:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  netstat -tulpn        Show listening ports & processes
+  ss -tulpn             Modern replacement for netstat
+  ss -s                 Socket statistics summary
+  iftop                 Live network bandwidth by connection
+  nethogs               Network usage by process
+
+  SYSTEM INFORMATION:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  uname -a          Full system information
+  uname -r          Kernel version only
+  hostname          System hostname
+  lscpu             CPU details
+  lsmem             Memory details
+  lsblk             Block devices (disks, partitions)
+  lsusb             USB devices connected
+  lspci             PCI devices (GPU, network card)
+  dmidecode         Hardware details (needs sudo)
+
+---------------------------------------------------------------
+8. KEY TAKEAWAYS FROM DAY 12
+---------------------------------------------------------------
+
+  [01] Every running program = a process with unique PID.
+       Every process has a parent (PPID) — processes form a tree!
+
+  [02] /proc is a virtual filesystem showing live process data.
+       /proc/PID/ folder exists for every running process!
+
+  [03] ps aux shows ALL processes. Know how to read its output.
+       Sort by CPU: ps aux --sort=-%cpu
+       Sort by MEM: ps aux --sort=-%mem
+
+  [04] load average in uptime = 1min, 5min, 15min averages.
+       If load > CPU cores count = server is overloaded!
+
+  [05] SIGTERM (15) = graceful stop. Process can clean up.
+       SIGKILL  (9) = force kill. Cannot be ignored. No cleanup.
+       Always try SIGTERM first, SIGKILL as last resort!
+
+  [06] Ctrl+Z pauses a process. bg resumes in background.
+       fg brings it back to foreground. jobs lists all jobs.
+
+  [07] Nice value: -20 (highest priority) to +19 (lowest).
+       Regular users can only INCREASE nice value (lower priority).
+       Only root can DECREASE nice value (increase priority).
+
+  [08] nohup is essential for DevOps deployments!
+       Without nohup → script dies when you disconnect SSH.
+       With nohup → script keeps running after logout!
+
+  [09] free -h: look at "available" column, not "free".
+       "available" = truly free memory for new processes.
+       If Swap is being used heavily = RAM is full = problem!
+
+  [10] df -h shows which partition is full.
+       du -sh * helps find which folder is eating disk space.
+       These two commands solve 90% of "disk full" issues!
+
+  [11] wa (wait) in vmstat = waiting for disk I/O.
+       High wa% = disk is the bottleneck, not CPU!
+       This is how you identify disk vs CPU performance issues.
+
+  [12] htop > top for daily use. Colored, easier to read.
+       But top is available on ALL systems. Know both!
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  VIEW PROCESSES:
+    ps aux                    → all processes
+    ps aux --sort=-%cpu       → sorted by CPU
+    pgrep -l nginx            → find process by name
+    pstree -p                 → process tree with PIDs
+
+  KILL PROCESSES:
+    kill PID                  → graceful stop
+    kill -9 PID               → force kill
+    killall nginx             → kill by name
+    pkill -u username         → kill user's processes
+
+  JOB CONTROL:
+    command &                 → run in background
+    Ctrl + Z                  → pause process
+    jobs                      → list jobs
+    fg %1                     → bring job 1 to front
+    bg %1                     → resume job 1 in background
+    nohup command &           → run beyond logout
+
+  PRIORITY:
+    nice -n 10 command        → start with low priority
+    sudo nice -n -10 command  → start with high priority
+    renice -n 5 -p PID        → change running process priority
+
+  MONITORING:
+    top / htop                → live process monitor
+    uptime                    → load averages
+    free -h                   → RAM usage
+    df -h                     → disk space
+    du -sh *                  → folder sizes
+    vmstat 2                  → CPU/memory/IO stats
+    iostat                    → disk performance
+
+  SIGNALS:
+    kill -l                   → list all signals
+    kill -1 PID               → SIGHUP  (reload)
+    kill -2 PID               → SIGINT  (interrupt)
+    kill -9 PID               → SIGKILL (force)
+    kill -15 PID              → SIGTERM (graceful)
+    kill -19 PID              → SIGSTOP (pause)
+    kill -18 PID              → SIGCONT (resume)
+
+===============================================================
+   Day 12 Complete! On to Day 13 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
