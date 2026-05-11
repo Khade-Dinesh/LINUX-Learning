@@ -1,0 +1,609 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 13
+   Topic: Linux Package Management — Deep Dive
+===============================================================
+
+Author   : Dinesh
+Day      : 13 / 120
+Topic    : Package Management — apt, yum/dnf, dpkg, rpm,
+           Repositories, snap & more
+Phase    : Phase 1 — Topic 3
+Platform : Linux (Ubuntu / RHEL / CentOS based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  What is Package Management?
+  2.  Types of Package Managers
+  3.  APT — Debian/Ubuntu Package Manager
+  4.  DPKG — Low Level Debian Package Tool
+  5.  YUM — RHEL/CentOS Package Manager
+  6.  DNF — Modern RHEL/Fedora Package Manager
+  7.  RPM — Low Level RedHat Package Tool
+  8.  Repository Management
+  9.  snap & flatpak — Universal Package Managers
+  10. Comparing Package Managers
+  11. Real World DevOps Package Management
+  12. Key Takeaways from Day 13
+
+---------------------------------------------------------------
+1. WHAT IS PACKAGE MANAGEMENT?
+---------------------------------------------------------------
+
+  A package is a compressed archive containing:
+  → Application binaries (executable files)
+  → Configuration files
+  → Dependencies list
+  → Installation/removal scripts
+  → Metadata (version, description, maintainer)
+
+  A Package Manager handles:
+  → Downloading packages from repositories
+  → Installing packages with all dependencies
+  → Updating packages to newer versions
+  → Removing packages cleanly
+  → Searching & querying available packages
+
+  WHY PACKAGE MANAGERS MATTER FOR DEVOPS:
+  → Install software consistently across all servers
+  → Automate software installation in scripts
+  → Manage software versions in infrastructure
+  → Keep servers updated and secure
+  → Reproduce identical environments reliably
+
+  WITHOUT package manager → manually download, compile,
+  handle dependencies yourself = painful and error-prone!
+
+---------------------------------------------------------------
+2. TYPES OF PACKAGE MANAGERS
+---------------------------------------------------------------
+
+  LEVEL 1 — Low Level (work directly with package files):
+    dpkg  → Debian/Ubuntu (.deb files)
+    rpm   → RedHat/CentOS/Fedora (.rpm files)
+
+  LEVEL 2 — High Level (handle dependencies automatically):
+    apt   → Debian/Ubuntu (uses dpkg underneath)
+    yum   → RHEL/CentOS 7 and below (uses rpm underneath)
+    dnf   → RHEL/CentOS 8+, Fedora (modern yum replacement)
+    zypper → openSUSE
+
+  LEVEL 3 — Universal (work across distributions):
+    snap     → Canonical (Ubuntu) universal packages
+    flatpak  → freedesktop.org universal packages
+    AppImage → portable self-contained applications
+
+  DISTRO → PACKAGE FORMAT → PACKAGE MANAGER:
+
+  DISTRO              FORMAT    LOW LEVEL    HIGH LEVEL
+  ------              ------    ---------    ----------
+  Ubuntu/Debian       .deb      dpkg         apt
+  RHEL/CentOS 7       .rpm      rpm          yum
+  RHEL/CentOS 8+      .rpm      rpm          dnf
+  Fedora              .rpm      rpm          dnf
+  openSUSE            .rpm      rpm          zypper
+  Arch Linux          .pkg.tar  pacman       pacman
+
+---------------------------------------------------------------
+3. APT — DEBIAN/UBUNTU PACKAGE MANAGER
+---------------------------------------------------------------
+
+  apt = Advanced Package Tool
+  Used on: Ubuntu, Debian, Linux Mint, Pop!_OS etc.
+
+  INSTALLING PACKAGES:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  apt install nginx                 Install nginx
+  apt install nginx -y              Install without asking yes/no
+  apt install nginx curl git        Install multiple packages
+  apt install package=1.2.3        Install specific version
+  apt install ./package.deb         Install local .deb file
+  apt reinstall nginx               Reinstall package
+  apt --fix-broken install          Fix broken dependencies
+
+  REMOVING PACKAGES:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  apt remove nginx                  Remove package (keep configs)
+  apt purge nginx                   Remove package + config files
+  apt autoremove                    Remove unused dependencies
+  apt autoremove --purge            Remove unused + their configs
+
+  remove vs purge:
+  → remove  : uninstalls software but keeps config files
+  → purge   : uninstalls software AND deletes config files
+  → Use purge for complete clean removal!
+
+  UPDATING PACKAGES:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  apt update                        Refresh package lists from repos
+  apt upgrade                       Upgrade all upgradeable packages
+  apt full-upgrade                  Upgrade + handle dependencies
+  apt upgrade nginx                 Upgrade specific package only
+  apt dist-upgrade                  Distribution level upgrade
+
+  CRITICAL DIFFERENCE:
+  apt update  → does NOT install anything!
+               Only refreshes the package index/list
+  apt upgrade → actually installs the updates
+  Always run apt update BEFORE apt upgrade!
+
+  SEARCHING & QUERYING:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  apt search nginx                  Search for package by keyword
+  apt show nginx                    Show package details & info
+  apt list                          List all available packages
+  apt list --installed              List only installed packages
+  apt list --upgradeable            List packages with updates
+  apt-cache search nginx            Search package cache
+  apt-cache show nginx              Show detailed package info
+  apt-cache policy nginx            Show version & repo info
+  apt-cache depends nginx           Show package dependencies
+  apt-cache rdepends nginx          Show what depends on package
+
+  CLEANING:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  apt clean                         Remove all cached .deb files
+  apt autoclean                     Remove only outdated cache files
+  apt autoremove                    Remove orphaned packages
+
+  HOLD/UNHOLD PACKAGES (prevent upgrades):
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  apt-mark hold nginx               Prevent nginx from upgrading
+  apt-mark unhold nginx             Allow nginx to upgrade again
+  apt-mark showhold                 Show all held packages
+
+---------------------------------------------------------------
+4. DPKG — LOW LEVEL DEBIAN PACKAGE TOOL
+---------------------------------------------------------------
+
+  dpkg works directly with .deb files.
+  No internet needed — works with local files only.
+  Does NOT handle dependencies automatically!
+
+  COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  dpkg -i package.deb               Install .deb file
+  dpkg -r package-name              Remove package
+  dpkg -P package-name              Purge package + configs
+  dpkg -l                           List all installed packages
+  dpkg -l nginx                     Check if nginx is installed
+  dpkg -l | grep nginx              Search installed packages
+  dpkg -s nginx                     Show package status/details
+  dpkg -L nginx                     List files installed by package
+  dpkg -S /usr/bin/nginx            Which package owns this file?
+  dpkg --configure -a               Configure all unpacked packages
+  dpkg --get-selections             List all packages with status
+  dpkg-query -l                     Query installed packages
+
+  PRACTICAL dpkg USE:
+  → Download .deb from official website
+  → Install without internet: dpkg -i package.deb
+  → Fix dependencies after: apt --fix-broken install
+
+---------------------------------------------------------------
+5. YUM — RHEL/CENTOS PACKAGE MANAGER
+---------------------------------------------------------------
+
+  yum = Yellowdog Updater Modified
+  Used on: RHEL 7, CentOS 7, Amazon Linux
+
+  COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  yum install nginx                 Install nginx
+  yum install nginx -y              Install without confirmation
+  yum install nginx httpd git       Install multiple packages
+  yum remove nginx                  Remove package
+  yum update                        Update all packages
+  yum update nginx                  Update specific package
+  yum search nginx                  Search for package
+  yum info nginx                    Show package information
+  yum list installed                List installed packages
+  yum list available                List available packages
+  yum list installed | grep nginx   Check if installed
+  yum deplist nginx                 Show dependencies
+  yum clean all                     Clean all cache
+  yum history                       Show install/remove history
+  yum history undo last             Undo last yum action!
+  yum groupinstall "Development Tools"  Install package groups
+  yum grouplist                     List available groups
+  yum provides /usr/bin/nginx       Find which package owns file
+
+---------------------------------------------------------------
+6. DNF — MODERN RHEL/FEDORA PACKAGE MANAGER
+---------------------------------------------------------------
+
+  dnf = Dandified YUM (yum replacement)
+  Used on: RHEL 8+, CentOS 8+, Fedora, Rocky Linux, AlmaLinux
+  Faster, better dependency resolution than yum!
+
+  COMMANDS (mostly same as yum, some extras):
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  dnf install nginx                 Install nginx
+  dnf install nginx -y              Install without confirmation
+  dnf remove nginx                  Remove package
+  dnf update                        Update all packages
+  dnf upgrade                       Upgrade all packages
+  dnf search nginx                  Search packages
+  dnf info nginx                    Show package info
+  dnf list installed                List installed packages
+  dnf list --available              List available packages
+  dnf autoremove                    Remove unused dependencies
+  dnf clean all                     Clean all cache
+  dnf history                       Show transaction history
+  dnf history undo last             Undo last transaction
+  dnf groupinstall "Development Tools"  Install group
+  dnf grouplist                     List package groups
+  dnf provides /usr/bin/nginx       Find package owning file
+  dnf repolist                      List enabled repositories
+  dnf repolist all                  List all repositories
+  dnf module list                   List available modules
+  dnf module install nodejs:14      Install specific module stream
+  dnf check-update                  Check available updates
+
+  YUM vs DNF:
+  → DNF is faster and more memory efficient
+  → DNF has better dependency solving algorithm
+  → DNF has module support (multiple versions of same software)
+  → DNF is drop-in replacement: same commands mostly work
+
+---------------------------------------------------------------
+7. RPM — LOW LEVEL REDHAT PACKAGE TOOL
+---------------------------------------------------------------
+
+  rpm = RPM Package Manager
+  Works directly with .rpm files.
+  Does NOT handle dependencies automatically!
+
+  COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  rpm -ivh package.rpm              Install .rpm (verbose+progress)
+  rpm -Uvh package.rpm              Upgrade .rpm package
+  rpm -evh package-name             Remove package
+  rpm -q nginx                      Query if package installed
+  rpm -qa                           List ALL installed packages
+  rpm -qa | grep nginx              Search installed packages
+  rpm -qi nginx                     Show package info
+  rpm -ql nginx                     List files in package
+  rpm -qf /usr/bin/nginx            Which package owns this file?
+  rpm -qR nginx                     Show package dependencies
+  rpm --import GPG-KEY              Import GPG key for verification
+  rpm -K package.rpm                Verify package signature
+
+---------------------------------------------------------------
+8. REPOSITORY MANAGEMENT
+---------------------------------------------------------------
+
+  A repository (repo) is a server hosting packages.
+  Package managers download from these repos.
+
+  APT REPOSITORIES — Ubuntu/Debian:
+
+  LOCATION:
+    /etc/apt/sources.list           → main sources file
+    /etc/apt/sources.list.d/        → additional repo files
+
+  FORMAT of sources.list:
+    deb http://archive.ubuntu.com/ubuntu jammy main restricted
+    deb-src http://archive.ubuntu.com/ubuntu jammy main
+
+  FIELDS:
+    deb         → binary packages
+    deb-src     → source packages
+    URL         → repository location
+    jammy       → distribution codename
+    main        → component (main/restricted/universe/multiverse)
+
+  MANAGING APT REPOS:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  add-apt-repository ppa:user/repo      Add PPA repository
+  add-apt-repository --remove ppa:...   Remove PPA
+  apt-add-repository "deb [url] dist"   Add custom repo
+  cat /etc/apt/sources.list             View current repos
+  ls /etc/apt/sources.list.d/           List additional repos
+
+  ADDING THIRD PARTY REPO (example - Docker):
+    # Add Docker GPG key
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
+
+    # Add Docker repository
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker.gpg] \
+    https://download.docker.com/linux/ubuntu jammy stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list
+
+    # Update and install
+    sudo apt update
+    sudo apt install docker-ce
+
+  YUM/DNF REPOSITORIES — RHEL/CentOS:
+
+  LOCATION:
+    /etc/yum.repos.d/               → all repo files (.repo)
+
+  FORMAT of .repo file:
+    [repo-id]
+    name=Repository Name
+    baseurl=https://repo-url/
+    enabled=1
+    gpgcheck=1
+    gpgkey=https://repo-url/gpg-key
+
+  MANAGING YUM/DNF REPOS:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  yum repolist                          List enabled repos
+  yum repolist all                      List all repos
+  yum-config-manager --add-repo URL     Add repository
+  yum-config-manager --enable repo-id   Enable repository
+  yum-config-manager --disable repo-id  Disable repository
+  dnf config-manager --add-repo URL     Add repo (dnf)
+  dnf repolist                          List repos (dnf)
+  ls /etc/yum.repos.d/                  View repo files
+
+  EPEL REPOSITORY (Extra Packages for Enterprise Linux):
+    dnf install epel-release            Install EPEL repo
+    yum install epel-release            Install EPEL (older)
+    → Adds thousands of extra packages for RHEL/CentOS!
+
+---------------------------------------------------------------
+9. SNAP & FLATPAK — UNIVERSAL PACKAGE MANAGERS
+---------------------------------------------------------------
+
+  SNAP:
+  → Developed by Canonical (Ubuntu)
+  → Self-contained packages with all dependencies included
+  → Automatic updates
+  → Sandboxed (isolated from system)
+  → Works on most Linux distributions
+
+  SNAP COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  snap install vlc                  Install snap package
+  snap remove vlc                   Remove snap package
+  snap list                         List installed snaps
+  snap find "video player"          Search snap store
+  snap info vlc                     Show snap details
+  snap refresh                      Update all snaps
+  snap refresh vlc                  Update specific snap
+  snap revert vlc                   Rollback to previous version
+  snap services                     List snap services
+  systemctl status snapd            Check snap daemon status
+
+  FLATPAK:
+  → Community driven universal package format
+  → Works across all distributions
+  → Sandboxed applications
+  → Uses Flathub as main repository
+
+  FLATPAK COMMANDS:
+
+  COMMAND                                   WHAT IT DOES
+  -------                                   ------------
+  flatpak install flathub org.vlc.VLC       Install from flathub
+  flatpak uninstall org.vlc.VLC             Remove package
+  flatpak list                              List installed
+  flatpak search vlc                        Search packages
+  flatpak update                            Update all flatpaks
+  flatpak run org.vlc.VLC                   Run flatpak app
+  flatpak remote-add --if-not-exists \
+  flathub https://flathub.org/repo/...      Add flathub repo
+
+  APT vs SNAP vs FLATPAK:
+
+  FEATURE         APT              SNAP            FLATPAK
+  -------         ---              ----            -------
+  Speed           Fast             Slower          Slower
+  Disk Space      Efficient        More space      More space
+  Updates         Manual           Automatic       Manual
+  Sandbox         No               Yes             Yes
+  Dependencies    Shared           Bundled         Bundled
+  Best for        System packages  Desktop apps    Desktop apps
+
+---------------------------------------------------------------
+10. COMPARING PACKAGE MANAGERS
+---------------------------------------------------------------
+
+  TASK                    APT              YUM/DNF
+  ----                    ---              -------
+  Install                 apt install      dnf install
+  Remove                  apt remove       dnf remove
+  Purge + configs         apt purge        dnf remove
+  Update index            apt update       dnf check-update
+  Upgrade all             apt upgrade      dnf upgrade
+  Search                  apt search       dnf search
+  Show info               apt show         dnf info
+  List installed          apt list --ins   dnf list installed
+  Clean cache             apt clean        dnf clean all
+  Fix dependencies        apt --fix-broken dnf --skip-broken
+  Auto remove             apt autoremove   dnf autoremove
+  List repos              -                dnf repolist
+  Add repo                add-apt-repo     dnf config-manager
+  Find file owner         dpkg -S file     rpm -qf file
+
+---------------------------------------------------------------
+11. REAL WORLD DEVOPS PACKAGE MANAGEMENT
+---------------------------------------------------------------
+
+  AUTOMATED SERVER SETUP SCRIPT:
+
+  #!/bin/bash
+  # Update system first
+  apt update -y && apt upgrade -y
+
+  # Install essential DevOps tools
+  apt install -y \
+    curl \
+    wget \
+    git \
+    vim \
+    htop \
+    net-tools \
+    unzip \
+    tree \
+    jq
+
+  # Install Docker
+  apt install -y docker.io
+  systemctl enable docker
+  systemctl start docker
+
+  echo "Setup complete!"
+
+  COMMON DEVOPS PACKAGES TO KNOW:
+
+  PACKAGE         PURPOSE
+  -------         -------
+  curl            HTTP requests, download files
+  wget            Download files from web
+  git             Version control
+  vim / nano      Text editors
+  htop            Process monitoring
+  net-tools       Network tools (netstat etc.)
+  nmap            Network scanning
+  tcpdump         Network packet capture
+  strace          System call tracer
+  lsof            List open files
+  jq              JSON processor
+  unzip / tar     Archive tools
+  cron            Task scheduling
+  rsync           File synchronization
+  tree            Directory visualization
+
+  PACKAGE VERSION MANAGEMENT:
+
+  # Pin specific version (apt)
+  apt install nginx=1.18.0-0ubuntu1
+
+  # Hold version (prevent upgrades)
+  apt-mark hold nginx
+
+  # Check available versions
+  apt-cache policy nginx
+
+  # List all versions in repo
+  apt-cache showpkg nginx
+
+---------------------------------------------------------------
+12. KEY TAKEAWAYS FROM DAY 13
+---------------------------------------------------------------
+
+  [01] Package manager = software that handles installing,
+       updating and removing software with dependencies.
+
+  [02] Two levels exist: low-level (dpkg/rpm) works with
+       local files. High-level (apt/dnf) handles internet
+       downloads and dependencies automatically.
+
+  [03] apt update → refreshes package LIST only.
+       apt upgrade → actually INSTALLS updates.
+       Always run apt update BEFORE apt upgrade!
+
+  [04] apt remove → keeps config files.
+       apt purge  → removes everything including configs.
+       Use purge for complete clean uninstall!
+
+  [05] Repositories are servers where packages live.
+       /etc/apt/sources.list → Ubuntu repo config.
+       /etc/yum.repos.d/     → RHEL/CentOS repo config.
+
+  [06] apt-cache policy package → shows installed version
+       AND available versions. Great for version checking!
+
+  [07] apt-mark hold prevents accidental upgrades.
+       Critical for production servers where you must
+       control which version is running!
+
+  [08] dpkg -S /path/to/file → find which package
+       installed that file. Very useful for debugging!
+
+  [09] dnf history undo last → undo last package action!
+       Incredibly useful when an update breaks something.
+
+  [10] Always verify third-party repos with GPG keys!
+       Never add untrusted repositories to production servers.
+
+  [11] apt autoremove → cleans up orphaned packages.
+       Run this after removing packages to free disk space!
+
+  [12] In DevOps automation scripts → always use -y flag
+       to avoid interactive prompts blocking your pipeline!
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  APT (Ubuntu/Debian):
+    apt update                  → refresh package list
+    apt upgrade -y              → upgrade all packages
+    apt install package -y      → install package
+    apt remove package          → remove (keep configs)
+    apt purge package           → remove + delete configs
+    apt autoremove              → remove orphan packages
+    apt search keyword          → search packages
+    apt show package            → show package details
+    apt list --installed        → list installed packages
+    apt-cache policy package    → show version info
+    apt-mark hold package       → prevent upgrades
+    dpkg -l | grep package      → check if installed
+    dpkg -S /path/to/file       → find file's package
+
+  YUM (RHEL/CentOS 7):
+    yum install package -y      → install package
+    yum remove package          → remove package
+    yum update -y               → update all packages
+    yum search keyword          → search packages
+    yum info package            → show package info
+    yum list installed          → list installed
+    yum history undo last       → undo last action
+    yum clean all               → clean cache
+
+  DNF (RHEL 8+/Fedora):
+    dnf install package -y      → install package
+    dnf remove package          → remove package
+    dnf upgrade -y              → upgrade all
+    dnf search keyword          → search packages
+    dnf info package            → show package info
+    dnf list installed          → list installed
+    dnf autoremove              → remove orphans
+    dnf clean all               → clean cache
+    dnf history undo last       → undo last action
+    dnf repolist                → list repositories
+
+  RPM/DPKG (Low Level):
+    dpkg -i package.deb         → install .deb
+    dpkg -l | grep package      → check installed
+    dpkg -L package             → list package files
+    rpm -ivh package.rpm        → install .rpm
+    rpm -qa | grep package      → check installed
+    rpm -ql package             → list package files
+
+===============================================================
+   Day 13 Complete! On to Day 14 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
