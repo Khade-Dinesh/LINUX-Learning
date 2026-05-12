@@ -1,0 +1,683 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 14
+   Topic: Linux Links (Hard & Soft) + Backup & Compression
+          (tar, gzip, bzip2, zip, unzip)
+===============================================================
+
+Author   : Dinesh
+Day      : 14 / 120
+Topic    : Inodes, Hard Links, Soft Links, tar, gzip,
+           bzip2, zip, unzip, Archive & Compression
+Phase    : Phase 1 — Topic 3 (Extended)
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  Inodes — The Identity of Every File
+  2.  Hard Links — Deep Dive
+  3.  Soft Links (Symbolic Links) — Deep Dive
+  4.  Hard Link vs Soft Link Comparison
+  5.  Practical Link Use Cases
+  6.  What is Archiving vs Compression?
+  7.  tar — The Most Important Backup Tool
+  8.  gzip & gunzip — Compression
+  9.  bzip2 & bunzip2 — Better Compression
+  10. xz — Best Compression
+  11. zip & unzip — Cross Platform
+  12. Other Compression Tools
+  13. Real World DevOps Backup Scenarios
+  14. Key Takeaways from Day 14
+
+---------------------------------------------------------------
+1. INODES — THE IDENTITY OF EVERY FILE
+---------------------------------------------------------------
+
+  What is an Inode?
+  Every file and directory in Linux has an inode.
+  An inode is a data structure storing ALL file metadata.
+
+  INODE STORES:
+  → File size
+  → File permissions (rwx)
+  → Owner (UID) and Group (GID)
+  → Timestamps (created, modified, accessed)
+  → Number of hard links pointing to it
+  → Pointers to data blocks on disk
+  → File type
+
+  INODE DOES NOT STORE:
+  → The filename! (filename is stored in directory entry)
+  → The actual file content (that's in data blocks)
+
+  This is the KEY insight:
+  A filename is just a LABEL pointing to an inode.
+  The inode points to the actual data on disk.
+
+  INODE COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  ls -i                 Show inode numbers of files
+  ls -li                Long listing with inode numbers
+  stat filename         Show complete inode information
+  df -i                 Show inode usage per filesystem
+  df -ih                Human readable inode usage
+  find . -inum NUMBER   Find file by inode number
+  tune2fs -l /dev/sda1  Show filesystem inode details
+
+  STAT OUTPUT EXPLAINED:
+
+  $ stat file.txt
+  File: file.txt
+  Size: 1024            Blocks: 8         IO Block: 4096
+  Device: 802h          Inode: 2097153    Links: 1
+  Access: -rw-r--r--    Uid: 1000         Gid: 1000
+  Access: 2026-04-01 10:00:00
+  Modify: 2026-04-01 10:00:00
+  Change: 2026-04-01 10:00:00
+
+  INODE NUMBER: 2097153 → unique ID on this filesystem
+  LINKS: 1              → number of hard links pointing here
+
+  INODE LIMIT:
+  Every filesystem has a fixed number of inodes.
+  When inodes are exhausted → cannot create new files
+  even if disk space is available!
+  Check: df -i → if IUse% is 100% = inode exhausted!
+
+---------------------------------------------------------------
+2. HARD LINKS — DEEP DIVE
+---------------------------------------------------------------
+
+  What is a Hard Link?
+  A hard link is another filename pointing to the SAME inode.
+  Both the original and hard link share identical inode number.
+  They are equal — neither is the "original"!
+
+  HOW IT WORKS:
+
+  file.txt ──────┐
+                 ├──→ Inode 2097153 ──→ Data on Disk
+  hardlink.txt ──┘
+
+  Both names → same inode → same data!
+
+  CREATING HARD LINKS:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  ln file.txt hardlink.txt      Create hard link
+  ln file.txt /path/hardlink    Create hard link in diff location
+  ls -li                        Verify same inode number
+  stat file.txt                 Check link count increases
+
+  HARD LINK RULES:
+  → Both files share same inode number (verify with ls -li)
+  → Link count in inode increases by 1 for each hard link
+  → Changes to one = changes to all (same data!)
+  → Deleting one does NOT delete data (just removes one name)
+  → Data deleted only when link count reaches ZERO
+  → CANNOT create hard link across different filesystems!
+  → CANNOT create hard link to a directory!
+
+  HARD LINK EXAMPLE:
+
+  $ echo "Hello DevOps" > original.txt
+  $ ln original.txt hardlink.txt
+  $ ls -li original.txt hardlink.txt
+  2097153 -rw-r--r-- 2 dinesh devops 13 original.txt
+  2097153 -rw-r--r-- 2 dinesh devops 13 hardlink.txt
+  # Notice: same inode (2097153) and link count = 2
+
+  $ rm original.txt
+  $ cat hardlink.txt
+  Hello DevOps        # still works! data survives deletion!
+
+  $ ls -li hardlink.txt
+  2097153 -rw-r--r-- 1 dinesh devops 13 hardlink.txt
+  # link count dropped to 1 — data still safe!
+
+---------------------------------------------------------------
+3. SOFT LINKS (SYMBOLIC LINKS) — DEEP DIVE
+---------------------------------------------------------------
+
+  What is a Soft Link?
+  A soft link (symlink) is a special file that contains
+  the PATH to another file or directory.
+  Like a shortcut in Windows!
+
+  HOW IT WORKS:
+
+  symlink.txt ──→ Inode A ──→ "/path/to/original.txt"
+                                        ↓
+  original.txt ──→ Inode B ──→ Data on Disk
+
+  Symlink has its OWN inode storing the path to original.
+
+  CREATING SOFT LINKS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  ln -s file.txt symlink.txt        Create symlink to file
+  ln -s /etc/nginx/ nginx-config    Create symlink to directory
+  ln -s /usr/bin/python3 python     Create command shortcut
+  ls -la                            See symlinks (shown with →)
+  ls -li                            See different inode numbers
+  readlink symlink.txt              Show where symlink points
+  readlink -f symlink.txt           Show absolute path target
+  file symlink.txt                  Show it's a symbolic link
+
+  SOFT LINK RULES:
+  → Symlink has its OWN different inode number
+  → Symlink stores the PATH to target (not data)
+  → CAN link across different filesystems!
+  → CAN link to directories!
+  → CAN link to files that don't exist yet! (dangling link)
+  → If original deleted → symlink becomes DANGLING (broken)
+  → Permissions shown as lrwxrwxrwx (always 777 visually)
+  → Actual permissions controlled by target file
+
+  SOFT LINK EXAMPLE:
+
+  $ echo "Nginx Config" > /etc/nginx/nginx.conf
+  $ ln -s /etc/nginx/nginx.conf ~/nginx-conf
+  $ ls -la ~/nginx-conf
+  lrwxrwxrwx 1 dinesh devops 22 nginx-conf -> /etc/nginx/nginx.conf
+
+  $ cat ~/nginx-conf       # reads original file through symlink
+  Nginx Config
+
+  $ rm /etc/nginx/nginx.conf   # delete original
+  $ cat ~/nginx-conf           # symlink now broken!
+  cat: nginx-conf: No such file or directory  # DANGLING LINK!
+
+  FINDING BROKEN SYMLINKS:
+  find /path -xtype l           # find all broken symlinks
+  find . -type l ! -exists      # another way to find dangling links
+
+---------------------------------------------------------------
+4. HARD LINK vs SOFT LINK COMPARISON
+---------------------------------------------------------------
+
+  FEATURE               HARD LINK              SOFT LINK
+  -------               ---------              ---------
+  Inode number          Same as original       Different (own inode)
+  What it stores        Points to inode        Stores path to target
+  Original deleted      Data survives!         Becomes dangling/broken
+  Cross filesystem      NO                     YES
+  Link to directory     NO                     YES
+  Link count            Increases by 1         Does NOT increase
+  File size             Same as original       Small (path length)
+  Permission display    Same as original       lrwxrwxrwx
+  Identify with ls -li  Same inode number      Different inode number
+  readlink works        NO                     YES
+  Use case              File backup/safety     Shortcuts, path aliases
+
+  WHEN TO USE WHICH:
+
+  USE HARD LINK WHEN:
+  → You want a true backup within same filesystem
+  → You want data to survive original file deletion
+  → Working with files (not directories)
+
+  USE SOFT LINK WHEN:
+  → You need to link across different filesystems/partitions
+  → You need to link to directories
+  → You want shortcuts to commands (/usr/bin/python → python3)
+  → You need flexibility to update where the link points
+
+---------------------------------------------------------------
+5. PRACTICAL LINK USE CASES
+---------------------------------------------------------------
+
+  REAL WORLD SOFT LINK EXAMPLES:
+
+  # Python version management
+  ln -s /usr/bin/python3.10 /usr/bin/python
+  # now 'python' command uses python3.10
+
+  # Nginx sites management
+  ln -s /etc/nginx/sites-available/myapp /etc/nginx/sites-enabled/
+  # enable site by symlinking (disable by removing symlink)
+
+  # Log file shortcut
+  ln -s /var/log/nginx/access.log ~/nginx-access.log
+
+  # Config file shortcut for quick access
+  ln -s /etc/ssh/sshd_config ~/sshd-config
+
+  # Share library versions
+  ln -s /usr/lib/libssl.so.1.1 /usr/lib/libssl.so
+
+  MANAGING SYMLINKS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  ln -sf target linkname            Force update existing symlink
+  unlink linkname                   Remove symlink (not target!)
+  rm linkname                       Remove symlink (not target!)
+  rm -rf linkname/                  DANGEROUS! Deletes target dir!
+  find . -type l                    Find all symlinks
+  find . -xtype l                   Find broken symlinks only
+
+  WARNING: rm -rf symlink/ (with trailing slash) follows the
+  symlink and deletes the TARGET DIRECTORY contents!
+  Always use: rm linkname (no trailing slash for symlinks!)
+
+---------------------------------------------------------------
+6. WHAT IS ARCHIVING vs COMPRESSION?
+---------------------------------------------------------------
+
+  ARCHIVING:
+  → Combining multiple files into ONE file
+  → No size reduction — just bundling
+  → Tool: tar (Tape Archive)
+  → Result: .tar file
+
+  COMPRESSION:
+  → Reducing file size using algorithms
+  → Single file only (traditionally)
+  → Tools: gzip, bzip2, xz, zip
+  → Result: .gz, .bz2, .xz, .zip
+
+  COMBINED (Archive + Compress):
+  → Bundle files AND reduce size
+  → Tools: tar + gzip/bzip2/xz together
+  → Result: .tar.gz (.tgz), .tar.bz2, .tar.xz
+
+  COMPRESSION vs ARCHIVING:
+  gzip file.txt       → file.txt.gz      (compressed, one file)
+  tar -cf backup.tar folder/  → backup.tar (archived, no compress)
+  tar -czf backup.tar.gz folder/ → backup.tar.gz (both!)
+
+---------------------------------------------------------------
+7. tar — THE MOST IMPORTANT BACKUP TOOL
+---------------------------------------------------------------
+
+  tar = Tape Archive
+  Most widely used tool for backup and distribution in Linux.
+
+  TAR FLAGS:
+
+  FLAG    MEANING
+  ----    -------
+  -c      Create new archive
+  -x      Extract archive
+  -t      List contents of archive
+  -f      Specify filename (always use this!)
+  -v      Verbose (show files being processed)
+  -z      Filter through gzip (.tar.gz)
+  -j      Filter through bzip2 (.tar.bz2)
+  -J      Filter through xz (.tar.xz)
+  -p      Preserve permissions
+  -C      Change to directory before extracting
+  --exclude  Exclude files/directories
+
+  CREATING ARCHIVES:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  tar -cf backup.tar folder/            Archive folder (no compress)
+  tar -czf backup.tar.gz folder/        Archive + gzip compress
+  tar -cjf backup.tar.bz2 folder/       Archive + bzip2 compress
+  tar -cJf backup.tar.xz folder/        Archive + xz compress
+  tar -cvf backup.tar folder/           Archive with verbose output
+  tar -czf backup.tar.gz file1 file2    Archive multiple files
+  tar -czf backup.tar.gz -C /path dir/  Archive from specific path
+  tar -czf backup.tar.gz --exclude=*.log folder/  Exclude logs
+
+  EXTRACTING ARCHIVES:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  tar -xf backup.tar                    Extract archive
+  tar -xzf backup.tar.gz                Extract gzip archive
+  tar -xjf backup.tar.bz2               Extract bzip2 archive
+  tar -xJf backup.tar.xz                Extract xz archive
+  tar -xvf backup.tar                   Extract with verbose
+  tar -xzf backup.tar.gz -C /tmp/       Extract to specific dir
+  tar -xzf backup.tar.gz file.txt       Extract single file only
+
+  LISTING ARCHIVE CONTENTS:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  tar -tf backup.tar                    List all files in archive
+  tar -tzf backup.tar.gz                List gzip archive contents
+  tar -tjf backup.tar.bz2               List bzip2 archive contents
+  tar -tvf backup.tar                   List with detailed info
+
+  MEMORY TRICK FOR TAR:
+  Create  : tar -czf  archive.tar.gz  source/    (c = create)
+  Extract : tar -xzf  archive.tar.gz             (x = extract)
+  List    : tar -tzf  archive.tar.gz             (t = table/list)
+
+  TAR WITH FIND (Advanced):
+
+  # Archive files modified in last 7 days
+  find /var/log -mtime -7 | tar -czf recent-logs.tar.gz -T -
+
+  # Archive excluding multiple patterns
+  tar -czf backup.tar.gz \
+    --exclude='*.log' \
+    --exclude='*.tmp' \
+    --exclude='.git' \
+    /var/www/html/
+
+  INCREMENTAL BACKUP WITH TAR:
+
+  # Full backup
+  tar -czf full-backup.tar.gz --listed-incremental=snapshot.file /data/
+
+  # Incremental backup (only changed files)
+  tar -czf incr-backup.tar.gz --listed-incremental=snapshot.file /data/
+
+---------------------------------------------------------------
+8. gzip & gunzip — COMPRESSION
+---------------------------------------------------------------
+
+  gzip = GNU zip compression
+  Most common Linux compression tool.
+  Replaces original file with compressed version!
+
+  COMMANDS:
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  gzip file.txt             Compress → creates file.txt.gz
+  gzip -k file.txt          Compress but KEEP original file
+  gzip -d file.txt.gz       Decompress (same as gunzip)
+  gzip -r folder/           Compress all files in folder
+  gzip -v file.txt          Verbose — show compression ratio
+  gzip -1 file.txt          Fast compression (least compression)
+  gzip -9 file.txt          Best compression (slowest)
+  gunzip file.txt.gz        Decompress .gz file
+  gunzip -k file.txt.gz     Decompress but keep .gz file
+  zcat file.txt.gz          View compressed file without extracting
+  zgrep "error" file.gz     Search inside compressed file!
+  zless file.txt.gz         Browse compressed file with less
+
+  COMPRESSION LEVELS:
+  -1 → fastest, least compression
+  -6 → default balance
+  -9 → slowest, best compression
+
+---------------------------------------------------------------
+9. bzip2 & bunzip2 — BETTER COMPRESSION
+---------------------------------------------------------------
+
+  bzip2 provides better compression than gzip
+  but is slower. Good for large files where size matters.
+
+  COMMANDS:
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  bzip2 file.txt            Compress → creates file.txt.bz2
+  bzip2 -k file.txt         Compress but keep original
+  bzip2 -d file.txt.bz2     Decompress
+  bzip2 -v file.txt         Verbose output
+  bzip2 -9 file.txt         Best compression
+  bunzip2 file.txt.bz2      Decompress .bz2 file
+  bzcat file.txt.bz2        View without decompressing
+  bzgrep "error" file.bz2   Search inside .bz2 file
+
+---------------------------------------------------------------
+10. xz — BEST COMPRESSION
+---------------------------------------------------------------
+
+  xz provides the best compression ratio.
+  Slowest but smallest output file size.
+  Used for distributing Linux kernel and large packages.
+
+  COMMANDS:
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  xz file.txt               Compress → creates file.txt.xz
+  xz -k file.txt            Compress but keep original
+  xz -d file.txt.xz         Decompress
+  xz -v file.txt            Verbose output
+  xz -9 file.txt            Best compression (slowest)
+  xz -0 file.txt            Fastest compression
+  unxz file.txt.xz          Decompress .xz file
+  xzcat file.txt.xz         View without decompressing
+
+  COMPRESSION COMPARISON:
+
+  TOOL      EXTENSION    SPEED     COMPRESSION    MEMORY USE
+  ----      ---------    -----     -----------    ----------
+  gzip      .gz          Fast      Good           Low
+  bzip2     .bz2         Medium    Better         Medium
+  xz        .xz          Slow      Best           High
+  zip       .zip         Fast      Good           Low
+
+---------------------------------------------------------------
+11. zip & unzip — CROSS PLATFORM
+---------------------------------------------------------------
+
+  zip is cross-platform — works on Linux, Windows, macOS.
+  Best when sharing archives with non-Linux users.
+  Unlike gzip, zip can archive AND compress in one step!
+
+  ZIP COMMANDS:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  zip archive.zip file.txt      Zip single file
+  zip archive.zip file1 file2   Zip multiple files
+  zip -r archive.zip folder/    Zip folder recursively
+  zip -9 archive.zip file.txt   Best compression level
+  zip -e archive.zip file.txt   Encrypt with password
+  zip -u archive.zip newfile    Update existing zip
+  zip -d archive.zip file.txt   Delete file from zip
+  zip -m archive.zip file.txt   Move to zip (delete original)
+  zip -j archive.zip folder/*   Zip without directory structure
+
+  UNZIP COMMANDS:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  unzip archive.zip             Extract to current directory
+  unzip archive.zip -d /tmp/    Extract to specific directory
+  unzip -l archive.zip          List contents without extracting
+  unzip -v archive.zip          List with compression details
+  unzip -t archive.zip          Test archive integrity
+  unzip -o archive.zip          Overwrite existing files
+  unzip -n archive.zip          Never overwrite existing files
+  unzip -p archive.zip file.txt Print specific file to stdout
+  unzip archive.zip "*.txt"     Extract only .txt files
+
+---------------------------------------------------------------
+12. OTHER COMPRESSION TOOLS
+---------------------------------------------------------------
+
+  7zip (7z) — High compression:
+    7z a archive.7z folder/     Create 7z archive
+    7z x archive.7z             Extract 7z archive
+    7z l archive.7z             List contents
+    Install: apt install p7zip-full
+
+  rar/unrar — RAR format:
+    rar a archive.rar folder/   Create RAR archive
+    unrar x archive.rar         Extract RAR archive
+    unrar l archive.rar         List contents
+
+  ARCHIVE FORMAT QUICK REFERENCE:
+
+  EXTENSION    CREATE                  EXTRACT
+  ---------    ------                  -------
+  .tar         tar -cf                 tar -xf
+  .tar.gz      tar -czf                tar -xzf
+  .tar.bz2     tar -cjf                tar -xjf
+  .tar.xz      tar -cJf                tar -xJf
+  .gz          gzip                    gunzip
+  .bz2         bzip2                   bunzip2
+  .xz          xz                      unxz
+  .zip         zip -r                  unzip
+  .7z          7z a                    7z x
+
+---------------------------------------------------------------
+13. REAL WORLD DEVOPS BACKUP SCENARIOS
+---------------------------------------------------------------
+
+  SCENARIO 1 — Daily Application Backup Script:
+
+  #!/bin/bash
+  DATE=$(date +%Y-%m-%d)
+  BACKUP_DIR="/backup"
+  SOURCE="/var/www/html"
+
+  # Create dated backup
+  tar -czf $BACKUP_DIR/webapp-$DATE.tar.gz \
+    --exclude='*.log' \
+    --exclude='node_modules' \
+    $SOURCE
+
+  echo "Backup created: webapp-$DATE.tar.gz"
+
+  # Keep only last 7 days of backups
+  find $BACKUP_DIR -name "webapp-*.tar.gz" -mtime +7 -delete
+
+  SCENARIO 2 — Database Backup:
+
+  #!/bin/bash
+  DATE=$(date +%Y%m%d_%H%M%S)
+  mysqldump -u root -p mydb | gzip > /backup/db-$DATE.sql.gz
+  echo "DB backup: db-$DATE.sql.gz"
+
+  SCENARIO 3 — Config Files Backup:
+
+  tar -czf ~/config-backup.tar.gz \
+    /etc/nginx/ \
+    /etc/ssh/sshd_config \
+    /etc/hosts \
+    ~/.bashrc \
+    ~/.ssh/config
+
+  SCENARIO 4 — Transfer & Restore:
+
+  # Create backup on server
+  tar -czf /tmp/app-backup.tar.gz /var/www/html/
+
+  # Transfer to local machine
+  scp dinesh@server:/tmp/app-backup.tar.gz ./
+
+  # Restore on new server
+  tar -xzf app-backup.tar.gz -C /var/www/html/
+
+  SCENARIO 5 — Nginx Sites Symlink Management:
+
+  # Enable a website (create symlink)
+  ln -s /etc/nginx/sites-available/myapp \
+        /etc/nginx/sites-enabled/myapp
+
+  # Disable a website (remove symlink only!)
+  rm /etc/nginx/sites-enabled/myapp
+  # Original config in sites-available stays safe!
+
+  # List enabled sites
+  ls -la /etc/nginx/sites-enabled/
+
+---------------------------------------------------------------
+14. KEY TAKEAWAYS FROM DAY 14
+---------------------------------------------------------------
+
+  [01] Inode stores ALL file metadata EXCEPT the filename.
+       The filename is just a directory entry pointing to inode.
+       This is why hard links and renaming are so efficient!
+
+  [02] Hard link = another name for the SAME inode.
+       Data survives even if original filename is deleted.
+       Both names are equal — neither is the "real" original!
+
+  [03] Soft link = a file storing the PATH to target.
+       Has its OWN inode. Breaks if original is deleted.
+       CAN link across filesystems and to directories!
+
+  [04] CANNOT create hard link across filesystems.
+       CANNOT create hard link to a directory.
+       Use soft links for these cases!
+
+  [05] rm symlink → removes symlink only (safe!)
+       rm -rf symlink/ → removes TARGET directory! (dangerous!)
+       Never add trailing slash when removing symlinks!
+
+  [06] Archiving = bundling files (tar without compression).
+       Compression = reducing size (gzip, bzip2, xz).
+       Combined = tar.gz, tar.bz2, tar.xz (best practice!)
+
+  [07] tar flags memory trick:
+       -c = Create | -x = Extract | -t = lisT
+       -z = gzip | -j = bzip2 | -J = xz | -f = File name
+
+  [08] gzip → fast, good compression (.gz)
+       bzip2 → medium speed, better compression (.bz2)
+       xz    → slowest, best compression (.xz)
+
+  [09] zip is cross-platform! Use when sharing with
+       Windows or macOS users. Use tar.gz for Linux-to-Linux.
+
+  [10] Always use -k flag with gzip/bzip2 to KEEP original.
+       Without -k → original file is DELETED after compression!
+
+  [11] df -i shows inode usage. If IUse% = 100%, you cannot
+       create new files even with free disk space!
+
+  [12] In DevOps — symlinks are everywhere!
+       Nginx sites-available/sites-enabled pattern uses symlinks.
+       Python version management uses symlinks.
+       Library versioning uses symlinks!
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  LINKS:
+    ln file hardlink              Create hard link
+    ln -s file symlink            Create soft/symbolic link
+    ln -sf target link            Force update symlink
+    ls -li                        Show inode numbers
+    stat file                     Show inode details
+    readlink symlink              Show symlink target
+    find . -type l                Find all symlinks
+    find . -xtype l               Find broken symlinks
+    unlink symlink                Remove symlink safely
+
+  TAR:
+    tar -czf out.tar.gz folder/   Create gzip archive
+    tar -cjf out.tar.bz2 folder/  Create bzip2 archive
+    tar -cJf out.tar.xz folder/   Create xz archive
+    tar -xzf archive.tar.gz       Extract gzip archive
+    tar -xzf archive.tar.gz -C /path/  Extract to directory
+    tar -tzf archive.tar.gz       List archive contents
+    tar -czf out.tar.gz --exclude='*.log' folder/  Exclude files
+
+  GZIP/BZIP2/XZ:
+    gzip -k file                  Compress (keep original)
+    gunzip file.gz                Decompress
+    zcat file.gz                  View without extracting
+    bzip2 -k file                 Compress (keep original)
+    bunzip2 file.bz2              Decompress
+    xz -k file                   Compress (keep original)
+    unxz file.xz                  Decompress
+
+  ZIP:
+    zip -r archive.zip folder/    Create zip archive
+    zip -e archive.zip file       Create encrypted zip
+    unzip archive.zip             Extract zip
+    unzip archive.zip -d /path/   Extract to directory
+    unzip -l archive.zip          List zip contents
+
+  INODE:
+    ls -i                         Show inode numbers
+    stat file                     Full inode info
+    df -i                         Inode usage per filesystem
+    find . -inum NUMBER           Find file by inode
+
+===============================================================
+   Day 14 Complete! On to Day 15 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
