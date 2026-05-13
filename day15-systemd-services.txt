@@ -1,0 +1,797 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 15
+   Topic: systemd & Services in Linux — Deep Dive
+===============================================================
+
+Author   : Dinesh
+Day      : 15 / 120
+Topic    : systemd, systemctl, Unit Files, journalctl,
+           Service Management, Boot Process
+Phase    : Phase 4 — Topic 5
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  What is systemd?
+  2.  Linux Boot Process — How systemd Fits In
+  3.  systemd Units — Types & Structure
+  4.  systemctl — Managing Services
+  5.  Writing Your Own Service Unit File
+  6.  Service States Explained
+  7.  systemd Targets (Runlevels)
+  8.  journalctl — Log Management
+  9.  systemd Timers (Cron Alternative)
+  10. Useful systemd Commands
+  11. Real World DevOps Scenarios
+  12. Key Takeaways from Day 15
+
+---------------------------------------------------------------
+1. WHAT IS systemd?
+---------------------------------------------------------------
+
+  systemd is the init system and service manager for Linux.
+  It is the FIRST process started by the kernel at boot.
+  It gets PID 1 — the parent of all processes!
+
+  Verify:
+    ps -p 1             → shows systemd with PID 1
+    ls -la /proc/1/exe  → points to /lib/systemd/systemd
+
+  WHAT systemd DOES:
+  → Starts all system services at boot
+  → Manages service dependencies automatically
+  → Starts services in PARALLEL (faster boot!)
+  → Monitors services and restarts them if they crash
+  → Manages system logs via journald
+  → Handles system shutdown and reboot
+  → Manages mount points, sockets, timers, devices
+
+  WHY systemd REPLACED SysVinit:
+  → SysVinit started services SEQUENTIALLY (slow!)
+  → systemd starts services in PARALLEL (fast!)
+  → systemd tracks dependencies automatically
+  → systemd restarts crashed services automatically
+  → systemd provides powerful logging via journald
+  → systemd has consistent interface across all distros
+
+  systemd COMPONENTS:
+  systemd    → main init daemon (PID 1)
+  systemctl  → command line tool to control systemd
+  journald   → logging daemon (replaces syslog)
+  networkd   → network management
+  resolved   → DNS resolution
+  logind     → login session management
+  timedated  → time and date management
+  hostnamed  → hostname management
+
+---------------------------------------------------------------
+2. LINUX BOOT PROCESS — HOW systemd FITS IN
+---------------------------------------------------------------
+
+  FULL BOOT SEQUENCE:
+
+  Step 1: BIOS/UEFI
+          → Hardware Power On Self Test (POST)
+          → Finds boot device (disk, USB)
+
+  Step 2: Bootloader (GRUB2)
+          → Loads Linux kernel into memory
+          → Passes kernel parameters
+          → Location: /boot/grub/grub.cfg
+
+  Step 3: Linux Kernel
+          → Initializes hardware drivers
+          → Mounts root filesystem
+          → Starts first process → systemd (PID 1)
+
+  Step 4: systemd
+          → Reads /etc/systemd/system/ and /lib/systemd/system/
+          → Determines default target (like runlevel)
+          → Starts all services for that target
+          → Mounts filesystems (/etc/fstab)
+          → Starts network, logging, display manager etc.
+
+  Step 5: Login Prompt / Desktop
+          → Terminal login OR graphical login appears
+
+  CHECKING BOOT PERFORMANCE:
+    systemd-analyze              → total boot time
+    systemd-analyze blame        → time each service took
+    systemd-analyze critical-chain → critical boot path
+    systemd-analyze plot > boot.svg → visual boot graph!
+
+---------------------------------------------------------------
+3. systemd UNITS — TYPES & STRUCTURE
+---------------------------------------------------------------
+
+  A UNIT is the basic building block of systemd.
+  Everything systemd manages is a unit!
+
+  UNIT TYPES:
+
+  TYPE          EXTENSION    PURPOSE
+  ----          ---------    -------
+  Service       .service     Background daemons & processes
+  Socket        .socket      IPC sockets & network ports
+  Target        .target      Group of units (like runlevels)
+  Timer         .timer       Scheduled tasks (cron alternative)
+  Mount         .mount       Filesystem mount points
+  Automount     .automount   Auto mount on access
+  Device        .device      Hardware devices
+  Path          .path        Monitor filesystem paths
+  Slice         .slice       Resource management groups
+  Scope         .scope       Externally created processes
+  Swap          .swap        Swap space management
+
+  UNIT FILE LOCATIONS:
+
+  LOCATION                          PURPOSE
+  --------                          -------
+  /lib/systemd/system/              Default unit files (distro)
+  /etc/systemd/system/              Custom/override unit files
+  /run/systemd/system/              Runtime unit files
+  ~/.config/systemd/user/           User-specific unit files
+
+  NOTE: Files in /etc/systemd/system/ OVERRIDE /lib/systemd/system/
+        Always create custom units in /etc/systemd/system/!
+
+  UNIT FILE STRUCTURE:
+
+  A unit file has 3 main sections:
+
+  [Unit]        → Description and dependencies
+  [Service]     → How to run the service (for .service files)
+  [Install]     → When/how to enable the unit
+
+  EXAMPLE — Basic Service Unit File:
+
+  [Unit]
+  Description=My DevOps Application
+  Documentation=https://github.com/dinesh/myapp
+  After=network.target
+  Requires=network.target
+
+  [Service]
+  Type=simple
+  User=appuser
+  WorkingDirectory=/opt/myapp
+  ExecStart=/opt/myapp/start.sh
+  ExecStop=/opt/myapp/stop.sh
+  ExecReload=/bin/kill -HUP $MAINPID
+  Restart=always
+  RestartSec=5
+  StandardOutput=journal
+  StandardError=journal
+  Environment=NODE_ENV=production
+  EnvironmentFile=/etc/myapp/env
+
+  [Install]
+  WantedBy=multi-user.target
+
+  [Unit] SECTION OPTIONS:
+
+  OPTION          PURPOSE
+  ------          -------
+  Description     Human readable service description
+  Documentation   URL or man page reference
+  After           Start AFTER these units
+  Before          Start BEFORE these units
+  Requires        Hard dependency — if fails, this fails too
+  Wants           Soft dependency — start together but ok if fails
+  Conflicts       Cannot run together with these units
+  ConditionPathExists  Only start if path exists
+
+  [Service] SECTION OPTIONS:
+
+  OPTION          PURPOSE
+  ------          -------
+  Type            simple/forking/oneshot/notify/dbus
+  User            Run service as this user
+  Group           Run service as this group
+  WorkingDirectory  Set working directory
+  ExecStart       Command to start service
+  ExecStop        Command to stop service
+  ExecReload      Command to reload service
+  ExecStartPre    Command to run BEFORE ExecStart
+  ExecStartPost   Command to run AFTER ExecStart
+  Restart         When to restart (always/on-failure/on-abort)
+  RestartSec      Seconds to wait before restart
+  Environment     Set environment variables
+  EnvironmentFile File containing environment variables
+  StandardOutput  Where to send stdout (journal/syslog/null)
+  StandardError   Where to send stderr (journal/syslog/null)
+  TimeoutStartSec Timeout for starting service
+  TimeoutStopSec  Timeout for stopping service
+  KillSignal      Signal to send when stopping (default SIGTERM)
+  LimitNOFILE     Maximum open file descriptors
+
+  SERVICE TYPES:
+
+  TYPE        WHEN TO USE
+  ----        -----------
+  simple      Main process stays in foreground (default)
+  forking     Process forks into background (traditional daemons)
+  oneshot     Process runs once and exits (scripts)
+  notify      Process sends notification when ready
+  dbus        Process registers on D-Bus when ready
+  idle        Start after all jobs are dispatched
+
+  [Install] SECTION OPTIONS:
+
+  OPTION          PURPOSE
+  ------          -------
+  WantedBy        Which target enables this unit
+  RequiredBy      Which target requires this unit
+  Also            Enable these units together
+  Alias           Alternative names for this unit
+
+---------------------------------------------------------------
+4. systemctl — MANAGING SERVICES
+---------------------------------------------------------------
+
+  systemctl is the main command to control systemd.
+
+  STARTING & STOPPING:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl start nginx             Start service NOW
+  systemctl stop nginx              Stop service NOW
+  systemctl restart nginx           Stop then start service
+  systemctl reload nginx            Reload config (no restart!)
+  systemctl reload-or-restart nginx Reload if possible, else restart
+  systemctl kill nginx              Send signal to service processes
+
+  start vs enable:
+  start  → starts service RIGHT NOW (this session only)
+  enable → starts service AUTOMATICALLY ON BOOT
+
+  ENABLING & DISABLING (Boot Persistence):
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl enable nginx            Enable start on boot
+  systemctl disable nginx           Disable start on boot
+  systemctl enable --now nginx      Enable AND start immediately!
+  systemctl disable --now nginx     Disable AND stop immediately!
+  systemctl is-enabled nginx        Check if enabled for boot
+  systemctl reenable nginx          Disable then re-enable
+
+  CHECKING STATUS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl status nginx            Full service status & recent logs
+  systemctl is-active nginx         Check if running (active/inactive)
+  systemctl is-enabled nginx        Check if boot enabled
+  systemctl is-failed nginx         Check if service failed
+
+  MASKING (Completely Blocking a Service):
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl mask nginx              Completely block — cannot start!
+  systemctl unmask nginx            Remove the block
+  systemctl is-enabled nginx        Shows "masked" if masked
+
+  mask vs disable:
+  disable → service won't start on boot (but can be started manually)
+  mask    → service CANNOT be started at all (completely blocked)
+
+  LISTING SERVICES:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl list-units              List all active units
+  systemctl list-units --type=service  List all services
+  systemctl list-units --state=failed  List failed services!
+  systemctl list-units --state=running List running services
+  systemctl list-unit-files         List all unit files
+  systemctl list-unit-files --type=service  List service files
+  systemctl list-dependencies nginx List service dependencies
+  systemctl list-dependencies --reverse nginx  Who depends on nginx?
+
+  SYSTEM CONTROL:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl poweroff                Shutdown system
+  systemctl reboot                  Reboot system
+  systemctl suspend                 Suspend system
+  systemctl hibernate               Hibernate system
+  systemctl rescue                  Boot into rescue mode
+  systemctl daemon-reload           Reload systemd after editing units
+  systemctl reset-failed            Clear failed service state
+
+  IMPORTANT: Always run daemon-reload after editing unit files!
+  systemctl daemon-reload → tells systemd to re-read unit files
+
+---------------------------------------------------------------
+5. WRITING YOUR OWN SERVICE UNIT FILE
+---------------------------------------------------------------
+
+  STEP BY STEP — Create a custom service:
+
+  STEP 1: Create your application script
+    vim /opt/myapp/app.sh
+    #!/bin/bash
+    while true; do
+        echo "App running: $(date)" >> /var/log/myapp.log
+        sleep 10
+    done
+
+    chmod +x /opt/myapp/app.sh
+
+  STEP 2: Create unit file
+    vim /etc/systemd/system/myapp.service
+
+    [Unit]
+    Description=My Custom DevOps App
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=dinesh
+    ExecStart=/opt/myapp/app.sh
+    Restart=on-failure
+    RestartSec=5
+    StandardOutput=journal
+    StandardError=journal
+
+    [Install]
+    WantedBy=multi-user.target
+
+  STEP 3: Reload systemd
+    systemctl daemon-reload
+
+  STEP 4: Start and enable service
+    systemctl enable --now myapp.service
+
+  STEP 5: Verify
+    systemctl status myapp.service
+    journalctl -u myapp.service -f
+
+  OVERRIDE EXISTING SERVICE (Don't edit original!):
+
+    # Create override directory
+    mkdir /etc/systemd/system/nginx.service.d/
+
+    # Create override file
+    vim /etc/systemd/system/nginx.service.d/override.conf
+
+    [Service]
+    Environment=NGINX_PORT=8080
+    LimitNOFILE=65536
+
+    # Reload systemd
+    systemctl daemon-reload
+
+    # Or use built-in edit command (creates override automatically!)
+    systemctl edit nginx
+
+---------------------------------------------------------------
+6. SERVICE STATES EXPLAINED
+---------------------------------------------------------------
+
+  STATE           MEANING
+  -----           -------
+  active(running) Service is running with one or more processes
+  active(exited)  Service ran successfully and exited (oneshot)
+  active(waiting) Service waiting for an event
+  inactive        Service is not running
+  failed          Service failed to start or crashed
+  enabled         Will start automatically on boot
+  disabled        Will NOT start automatically on boot
+  masked          Completely blocked — cannot start at all
+  static          Cannot be enabled — only started as dependency
+  generated       Generated by a generator tool
+  transient       Created at runtime, not from unit file
+
+  READING systemctl status OUTPUT:
+
+  ● nginx.service - A high performance web server
+       Loaded: loaded (/lib/systemd/system/nginx.service; enabled)
+       Active: active (running) since Mon 2026-04-01 10:00:00; 2h ago
+         Docs: man:nginx(8)
+      Process: 1234 ExecStartPre=/usr/sbin/nginx -t (code=exited)
+     Main PID: 1235 (nginx)
+       CGroup: /system.slice/nginx.service
+               ├─1235 nginx: master process
+               └─1236 nginx: worker process
+
+  FIELDS EXPLAINED:
+  Loaded   → unit file found and loaded (enabled/disabled)
+  Active   → current runtime state (running/failed/inactive)
+  Main PID → primary process ID of the service
+  CGroup   → control group containing service processes
+
+---------------------------------------------------------------
+7. systemd TARGETS (RUNLEVELS)
+---------------------------------------------------------------
+
+  Targets group units together.
+  They replaced the old SysVinit runlevels.
+
+  TARGETS vs OLD RUNLEVELS:
+
+  OLD RUNLEVEL    systemd TARGET              PURPOSE
+  ------------    --------------              -------
+  0               poweroff.target             Shutdown
+  1               rescue.target               Single user mode
+  2,3,4           multi-user.target           Multi-user, no GUI
+  5               graphical.target            Multi-user with GUI
+  6               reboot.target               Reboot
+
+  MANAGING TARGETS:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  systemctl get-default                 Show default boot target
+  systemctl set-default multi-user      Set default to no-GUI
+  systemctl set-default graphical       Set default to GUI
+  systemctl isolate multi-user.target   Switch target NOW
+  systemctl isolate rescue.target       Switch to rescue mode NOW
+  systemctl list-units --type=target    List all available targets
+
+  SERVER BEST PRACTICE:
+  → Servers should use multi-user.target (no GUI needed!)
+  → Desktop systems use graphical.target
+  → Check: systemctl get-default
+
+---------------------------------------------------------------
+8. journalctl — LOG MANAGEMENT
+---------------------------------------------------------------
+
+  journald is systemd's logging daemon.
+  journalctl is the tool to read those logs.
+  Replaces reading /var/log/ files manually!
+
+  BASIC COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  journalctl                        Show ALL logs (oldest first)
+  journalctl -r                     Show logs newest first
+  journalctl -f                     Follow live logs (like tail -f!)
+  journalctl -n 50                  Show last 50 log lines
+  journalctl -n 100 -r              Last 100 lines, newest first
+  journalctl --no-pager             Output without pagination
+
+  FILTERING BY SERVICE:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  journalctl -u nginx               Show nginx service logs
+  journalctl -u nginx -f            Follow nginx logs live
+  journalctl -u nginx -n 50         Last 50 nginx log lines
+  journalctl -u nginx -u ssh        Logs from multiple services
+
+  FILTERING BY TIME:
+
+  COMMAND                                   WHAT IT DOES
+  -------                                   ------------
+  journalctl --since "2026-04-01"           Logs since date
+  journalctl --until "2026-04-01 12:00:00"  Logs until datetime
+  journalctl --since "1 hour ago"           Last hour of logs
+  journalctl --since "today"                Today's logs
+  journalctl --since yesterday              Yesterday's logs
+  journalctl -u nginx --since "10 min ago"  Recent service logs
+
+  FILTERING BY PRIORITY:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  journalctl -p err                 Show error level logs
+  journalctl -p warning             Show warning and above
+  journalctl -p crit                Show critical logs only
+  journalctl -p debug               Show debug level logs
+  journalctl -p 0..3                Show emerg to error
+
+  PRIORITY LEVELS (syslog):
+  0=emerg  1=alert  2=crit  3=err  4=warning  5=notice  6=info  7=debug
+
+  FILTERING BY BOOT:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  journalctl -b                     Logs from current boot
+  journalctl -b -1                  Logs from previous boot
+  journalctl -b -2                  Logs from 2 boots ago
+  journalctl --list-boots           List all recorded boots
+
+  OTHER USEFUL OPTIONS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  journalctl -k                     Kernel messages only (dmesg)
+  journalctl _UID=1000              Logs from specific user ID
+  journalctl --disk-usage           Show journal disk usage
+  journalctl --vacuum-size=100M     Keep only 100MB of logs
+  journalctl --vacuum-time=7d       Keep only last 7 days logs
+  journalctl -o json                Output in JSON format
+  journalctl -o verbose             Detailed output format
+  journalctl -xe                    Jump to end with explanations
+
+  JOURNAL CONFIGURATION:
+  Location: /etc/systemd/journald.conf
+
+  Key settings:
+  Storage=persistent     → keep logs across reboots (to disk)
+  Storage=volatile       → keep logs in RAM only (/run/log/)
+  SystemMaxUse=500M      → max disk space for journal
+  MaxRetentionSec=1month → keep logs for 1 month max
+
+---------------------------------------------------------------
+9. systemd TIMERS (CRON ALTERNATIVE)
+---------------------------------------------------------------
+
+  systemd timers can replace cron jobs!
+  More powerful, better logging, dependency support.
+
+  EXAMPLE — Run backup every day at 2am:
+
+  1. Create the service to run:
+  vim /etc/systemd/system/backup.service
+
+  [Unit]
+  Description=Daily Backup Service
+
+  [Service]
+  Type=oneshot
+  ExecStart=/opt/scripts/backup.sh
+
+  2. Create the timer:
+  vim /etc/systemd/system/backup.timer
+
+  [Unit]
+  Description=Run backup daily at 2am
+
+  [Timer]
+  OnCalendar=*-*-* 02:00:00
+  Persistent=true
+
+  [Install]
+  WantedBy=timers.target
+
+  3. Enable and start timer:
+  systemctl enable --now backup.timer
+
+  4. Check timers:
+  systemctl list-timers           → list all active timers
+  systemctl list-timers --all     → list all including inactive
+  systemctl status backup.timer   → check specific timer
+
+  TIMER SCHEDULE OPTIONS:
+
+  SCHEDULE                MEANING
+  --------                -------
+  OnBootSec=5min          5 minutes after boot
+  OnUnitActiveSec=1h      Every 1 hour after last run
+  OnCalendar=daily        Every day at midnight
+  OnCalendar=weekly       Every week
+  OnCalendar=monthly      Every month
+  OnCalendar=Mon *-*-* 09:00:00  Every Monday at 9am
+  OnCalendar=*-*-* 02:00:00     Every day at 2am
+  Persistent=true         Run missed jobs after downtime
+
+---------------------------------------------------------------
+10. USEFUL systemd COMMANDS
+---------------------------------------------------------------
+
+  TROUBLESHOOTING FAILED SERVICES:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl --failed                Show all failed units
+  systemctl status failed-service   See why it failed
+  journalctl -u failed-service -n 50  See recent error logs
+  journalctl -xe                    See recent system errors
+  systemctl reset-failed            Clear all failed states
+  systemctl reset-failed nginx      Clear nginx failed state
+
+  SERVICE DEPENDENCY MANAGEMENT:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  systemctl list-dependencies nginx     What nginx depends on
+  systemctl list-dependencies --reverse nginx  Who needs nginx
+  systemctl list-dependencies --all nginx      Full tree
+
+  SYSTEM INFORMATION:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  systemctl show nginx              Show all properties of service
+  systemctl show -p MainPID nginx   Show specific property
+  systemctl cat nginx               Show unit file content
+  systemctl edit nginx              Edit/override unit file
+  systemd-cgls                      Show control group tree
+  systemd-cgtop                     Top-like view of cgroups
+  systemd-analyze                   Boot timing analysis
+  systemd-analyze blame             What slowed boot?
+  systemd-analyze critical-chain    Critical boot path
+
+---------------------------------------------------------------
+11. REAL WORLD DEVOPS SCENARIOS
+---------------------------------------------------------------
+
+  SCENARIO 1 — Deploy Node.js App as Service:
+
+  /etc/systemd/system/nodeapp.service:
+
+  [Unit]
+  Description=Node.js Application
+  After=network.target
+
+  [Service]
+  Type=simple
+  User=nodeuser
+  WorkingDirectory=/opt/nodeapp
+  ExecStart=/usr/bin/node /opt/nodeapp/server.js
+  Restart=always
+  RestartSec=10
+  StandardOutput=journal
+  StandardError=journal
+  Environment=NODE_ENV=production
+  Environment=PORT=3000
+
+  [Install]
+  WantedBy=multi-user.target
+
+  SCENARIO 2 — Service Won't Start — Debug Workflow:
+
+  Step 1: systemctl status myservice
+  Step 2: journalctl -u myservice -n 50
+  Step 3: journalctl -xe
+  Step 4: systemctl cat myservice    → check unit file
+  Step 5: Fix the issue
+  Step 6: systemctl daemon-reload
+  Step 7: systemctl restart myservice
+  Step 8: systemctl status myservice
+
+  SCENARIO 3 — Nginx Service Management:
+
+  # Start nginx
+  systemctl start nginx
+
+  # Test config before reload (ALWAYS do this!)
+  nginx -t
+
+  # If config ok → reload without downtime
+  systemctl reload nginx
+
+  # Enable to start on boot
+  systemctl enable nginx
+
+  # Full status check
+  systemctl status nginx
+
+  # View live nginx logs
+  journalctl -u nginx -f
+
+  SCENARIO 4 — Check What's Slowing Boot:
+
+  systemd-analyze
+  # Output: Startup finished in 3.5s (kernel) + 8.2s (userspace)
+
+  systemd-analyze blame
+  # Shows: postgresql.service took 4.2s
+  #        mysql.service took 2.1s
+  #        networking.service took 1.8s
+
+  SCENARIO 5 — Preventing Service from Running:
+
+  # Completely block a service from running
+  systemctl mask postfix
+
+  # Verify it's blocked
+  systemctl status postfix   # shows masked
+  systemctl start postfix    # fails with "masked" error
+
+  # Remove block when needed
+  systemctl unmask postfix
+
+---------------------------------------------------------------
+12. KEY TAKEAWAYS FROM DAY 15
+---------------------------------------------------------------
+
+  [01] systemd is PID 1 — the parent of all processes.
+       It starts everything when Linux boots!
+
+  [02] systemctl start  → starts service RIGHT NOW only.
+       systemctl enable → starts service ON EVERY BOOT.
+       Use enable --now to do BOTH at once!
+
+  [03] Always run systemctl daemon-reload after editing
+       or creating any unit file. Without it systemd
+       uses the old version of your unit file!
+
+  [04] mask vs disable:
+       disable → won't auto-start on boot (can start manually)
+       mask    → completely blocked, CANNOT start at all!
+
+  [05] Always check systemctl status service AFTER
+       starting. Active(running) = good. Failed = check logs!
+
+  [06] journalctl -u service -f → follow live service logs.
+       This is your best friend when debugging services!
+
+  [07] journalctl -xe → shows recent system errors with
+       explanations. Always check this when something fails!
+
+  [08] systemd targets replaced old runlevels:
+       multi-user.target = servers (no GUI)
+       graphical.target  = desktop (with GUI)
+
+  [09] systemd-analyze blame → shows which service slowed
+       your boot. Great for optimizing server startup time!
+
+  [10] Never edit unit files in /lib/systemd/system/ directly!
+       Always create overrides in /etc/systemd/system/
+       or use systemctl edit service to create override!
+
+  [11] WantedBy=multi-user.target in [Install] section
+       means the service starts when server reaches
+       normal multi-user state (normal server operation).
+
+  [12] systemd timers are more powerful than cron!
+       Better logging, dependency support, and they catch
+       up on missed runs with Persistent=true!
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  SERVICE CONTROL:
+    systemctl start service         → start now
+    systemctl stop service          → stop now
+    systemctl restart service       → restart now
+    systemctl reload service        → reload config only
+    systemctl enable service        → enable on boot
+    systemctl disable service       → disable on boot
+    systemctl enable --now service  → enable + start NOW
+    systemctl disable --now service → disable + stop NOW
+    systemctl mask service          → completely block
+    systemctl unmask service        → remove block
+    systemctl daemon-reload         → reload unit files
+
+  STATUS & LISTING:
+    systemctl status service        → full status + logs
+    systemctl is-active service     → active or inactive?
+    systemctl is-enabled service    → enabled or disabled?
+    systemctl --failed              → show failed services
+    systemctl list-units            → all active units
+    systemctl list-units --type=service → all services
+    systemctl list-unit-files       → all unit files
+
+  UNIT FILE MANAGEMENT:
+    systemctl cat service           → show unit file
+    systemctl edit service          → edit/override unit file
+    systemctl show service          → all unit properties
+
+  JOURNALCTL:
+    journalctl -u service           → service logs
+    journalctl -u service -f        → follow live logs
+    journalctl -u service -n 50     → last 50 lines
+    journalctl -xe                  → recent errors
+    journalctl -b                   → current boot logs
+    journalctl -p err               → error level only
+    journalctl --since "1 hour ago" → recent logs
+    journalctl --disk-usage         → log disk usage
+
+  SYSTEM ANALYSIS:
+    systemd-analyze                 → boot timing
+    systemd-analyze blame           → per-service boot time
+    systemd-analyze critical-chain  → critical boot path
+
+  TARGETS:
+    systemctl get-default           → current default target
+    systemctl set-default multi-user → set server mode default
+    systemctl isolate rescue.target → switch to rescue now
+
+===============================================================
+   Day 15 Complete! On to Day 16 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
