@@ -1,0 +1,555 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 16
+   Topic: SCP & rsync Deep Dive + Revision
+          (Package Management, Processes, Services, systemd)
+===============================================================
+
+Author   : Dinesh
+Day      : 16 / 120
+Topic    : SCP, rsync, SSH File Transfer,
+           Revision — Package Mgmt, Processes, systemd
+Phase    : Phase 2 (SSH Tools) + Revision Phase 1 & 4
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  SCP — Secure Copy Protocol Deep Dive
+  2.  rsync — Remote Sync Deep Dive
+  3.  SCP vs rsync Comparison
+  4.  Real World DevOps File Transfer Scenarios
+  5.  Revision — Package Management Quick Reference
+  6.  Revision — Linux Processes Quick Reference
+  7.  Revision — systemd & Services Quick Reference
+  8.  Key Takeaways from Day 16
+
+---------------------------------------------------------------
+1. SCP — SECURE COPY PROTOCOL DEEP DIVE
+---------------------------------------------------------------
+
+  What is SCP?
+  SCP = Secure Copy Protocol
+  Copies files between hosts over SSH connection.
+  Uses SSH for authentication and encryption.
+  If SSH works → SCP works! Same keys, same config, same port.
+
+  SYNTAX:
+    scp [options] source destination
+
+  SOURCE/DESTINATION FORMAT:
+    Local file    → /path/to/file  OR  filename
+    Remote file   → user@host:/path/to/file
+
+  BASIC FILE TRANSFER:
+
+  LOCAL → REMOTE (Upload):
+
+  COMMAND                                       WHAT IT DOES
+  -------                                       ------------
+  scp file.txt dinesh@192.168.1.10:/home/dinesh/    Upload file
+  scp file.txt dinesh@server:/tmp/                  Upload to /tmp
+  scp file.txt dinesh@server:~/                     Upload to home
+  scp file.txt dinesh@server:~/newname.txt          Upload & rename
+  scp /etc/nginx/nginx.conf dinesh@server:/tmp/     Upload config
+
+  REMOTE → LOCAL (Download):
+
+  COMMAND                                       WHAT IT DOES
+  -------                                       ------------
+  scp dinesh@192.168.1.10:/home/dinesh/file.txt .   Download to current dir
+  scp dinesh@server:/var/log/app.log ./logs/        Download log file
+  scp dinesh@server:/tmp/backup.tar.gz ~/backups/   Download backup
+  scp dinesh@server:~/config.yml /etc/app/          Download & place config
+
+  REMOTE → REMOTE (Server to Server):
+
+  COMMAND                                           WHAT IT DOES
+  -------                                           ------------
+  scp user@server1:/path/file user@server2:/path/   Copy between servers
+  scp dinesh@web1:/var/www/index.html dinesh@web2:/var/www/
+
+  DIRECTORY TRANSFER:
+
+  COMMAND                                           WHAT IT DOES
+  -------                                           ------------
+  scp -r folder/ dinesh@server:/home/dinesh/        Upload folder recursively
+  scp -r dinesh@server:/var/www/html/ ./backup/     Download folder
+  scp -r dinesh@server:/etc/nginx/ ./nginx-backup/  Download nginx configs
+
+  SCP OPTIONS:
+
+  OPTION    WHAT IT DOES
+  ------    ------------
+  -r        Recursive — copy directories
+  -P 2222   Specify custom SSH port (capital P!)
+  -i key    Use specific SSH private key
+  -p        Preserve file timestamps and permissions
+  -q        Quiet mode — suppress progress output
+  -v        Verbose — debug information
+  -C        Enable compression during transfer
+  -l 1000   Limit bandwidth to 1000 Kbit/s
+  -4        Force IPv4
+  -6        Force IPv6
+
+  SCP WITH CUSTOM PORT:
+    scp -P 2222 file.txt dinesh@server:/tmp/
+    NOTE: SCP uses -P (capital P) unlike SSH which uses -p!
+
+  SCP WITH SSH KEY:
+    scp -i ~/.ssh/id_rsa file.txt dinesh@server:/tmp/
+
+  SCP WITH SSH CONFIG (Best Practice!):
+    # If ~/.ssh/config has Host alias set up:
+    scp file.txt myserver:/tmp/           # clean and simple!
+    scp -r folder/ myserver:/var/www/     # recursive with alias
+
+  MULTIPLE FILES WITH SCP:
+    scp file1.txt file2.txt file3.txt dinesh@server:/tmp/
+    scp *.conf dinesh@server:/etc/app/    # wildcard transfer
+    scp {file1,file2,file3} dinesh@server:/tmp/
+
+  SCP LIMITATIONS:
+  → Copies everything every time (no delta/diff)
+  → No resume if transfer interrupted
+  → Slower for large amounts of files
+  → Being deprecated in some systems — use rsync or sftp instead!
+
+---------------------------------------------------------------
+2. rsync — REMOTE SYNC DEEP DIVE
+---------------------------------------------------------------
+
+  What is rsync?
+  rsync = Remote Sync
+  Synchronizes files between local and/or remote locations.
+  Only transfers CHANGED parts of files (delta transfer!)
+  Much faster and smarter than SCP for repeated transfers!
+
+  HOW rsync WORKS (The Magic):
+  1. rsync compares source and destination
+  2. Identifies what has changed (by size, timestamp, checksum)
+  3. Transfers ONLY the differences
+  4. Result: destination mirrors source efficiently!
+
+  SYNTAX:
+    rsync [options] source destination
+
+  TRAILING SLASH RULE — VERY IMPORTANT!
+
+  rsync -avz folder/  server:/path/     → copies CONTENTS of folder
+  rsync -avz folder   server:/path/     → copies folder ITSELF
+
+  folder/  (with slash)    → copies what's INSIDE folder
+  folder   (without slash) → copies the folder as a whole
+
+  This is the most common rsync mistake! Remember it well!
+
+  THE ESSENTIAL FLAGS — -avz:
+
+  FLAG    MEANING
+  ----    -------
+  -a      Archive mode:
+            -r  recursive
+            -l  copy symlinks as symlinks
+            -p  preserve permissions
+            -t  preserve timestamps
+            -g  preserve group
+            -o  preserve owner (needs root)
+            -D  preserve device files
+  -v      Verbose — show files being transferred
+  -z      Compress data during transfer (saves bandwidth)
+
+  Use -avz for almost everything. It's the DevOps standard!
+
+  LOCAL TO REMOTE (Upload/Push):
+
+  COMMAND                                           WHAT IT DOES
+  -------                                           ------------
+  rsync -avz file.txt dinesh@server:/home/dinesh/   Sync file to server
+  rsync -avz folder/ dinesh@server:/var/www/html/   Sync folder contents
+  rsync -avz /var/www/ dinesh@server:/var/www/      Sync web directory
+  rsync -avz --progress file.txt dinesh@server:~/   Show transfer progress
+  rsync -avzn folder/ dinesh@server:/path/          DRY RUN — show what would transfer
+
+  REMOTE TO LOCAL (Download/Pull):
+
+  COMMAND                                           WHAT IT DOES
+  -------                                           ------------
+  rsync -avz dinesh@server:/var/log/ ./logs/        Pull logs locally
+  rsync -avz dinesh@server:/var/www/ ./backup/      Pull web files backup
+  rsync -avz dinesh@server:/etc/nginx/ ./configs/   Pull nginx configs
+
+  LOCAL TO LOCAL (Useful for backup!):
+
+  COMMAND                                           WHAT IT DOES
+  -------                                           ------------
+  rsync -avz /source/ /destination/                 Local sync/backup
+  rsync -avz /home/dinesh/ /backup/dinesh/          Backup home directory
+  rsync -avz /var/www/ /mnt/backup/www/             Backup web files locally
+
+  RSYNC OPTIONS:
+
+  OPTION              WHAT IT DOES
+  ------              ------------
+  -a                  Archive mode (see above)
+  -v                  Verbose output
+  -z                  Compress during transfer
+  -r                  Recursive (included in -a)
+  -n / --dry-run      Simulate without making changes
+  -P                  Show progress + allow resume
+  --progress          Show transfer progress
+  --delete            Delete files in dest not in source
+  --exclude='*.log'   Exclude files matching pattern
+  --exclude-from=file Exclude patterns from file
+  --include='*.conf'  Include matching files
+  --backup            Make backup of overwritten files
+  --backup-dir=/path  Store backups in this directory
+  --checksum          Compare by checksum not timestamp
+  --bwlimit=1000      Limit bandwidth to 1000 KB/s
+  --partial           Keep partially transferred files
+  --resume            Resume interrupted transfers
+  -e "ssh -p 2222"    Use custom SSH port
+  -e "ssh -i key.pem" Use specific SSH key
+  --stats             Show transfer statistics summary
+  --human-readable    Show sizes in human readable format
+  --itemize-changes   Show what changed for each file
+  --max-size=10m      Skip files larger than 10MB
+  --min-size=1k       Skip files smaller than 1KB
+  --ignore-existing   Skip files that exist in destination
+
+  THE --delete FLAG — Use with Caution!
+
+  rsync -avz --delete source/ dest/
+  → Files deleted from source → deleted from destination too
+  → Makes destination an EXACT mirror of source
+  → VERY powerful — VERY dangerous if wrong path given!
+  → Always do a dry run first: rsync -avzn --delete source/ dest/
+
+  DRY RUN — Always Test First!
+
+  rsync -avzn source/ dest/         → see what WOULD be transferred
+  rsync -avzn --delete source/ dest/ → see what WOULD be deleted
+  → -n or --dry-run: simulates without making any changes!
+  → ALWAYS dry run before using --delete in production!
+
+  EXCLUDING FILES & DIRECTORIES:
+
+  rsync -avz --exclude='*.log' source/ dest/
+  rsync -avz --exclude='*.log' --exclude='*.tmp' source/ dest/
+  rsync -avz --exclude='.git' --exclude='node_modules' source/ dest/
+  rsync -avz --exclude-from='exclude.txt' source/ dest/
+
+  exclude.txt contents:
+  *.log
+  *.tmp
+  .git/
+  node_modules/
+  __pycache__/
+  .env
+
+  CUSTOM SSH PORT WITH rsync:
+
+  rsync -avz -e "ssh -p 2222" source/ dinesh@server:/dest/
+  rsync -avz -e "ssh -i ~/.ssh/mykey" source/ dinesh@server:/dest/
+  rsync -avz -e "ssh -p 2222 -i ~/.ssh/key" source/ server:/dest/
+
+  BANDWIDTH LIMITING:
+
+  rsync -avz --bwlimit=500 source/ dest/  → limit to 500 KB/s
+  Useful when syncing on production servers to avoid saturation!
+
+  RESUME INTERRUPTED TRANSFER:
+
+  rsync -avzP source/ dest/
+  → -P = --partial --progress
+  → Keeps partial files and shows progress
+  → Run same command again to resume from where it stopped!
+
+---------------------------------------------------------------
+3. SCP vs rsync COMPARISON
+---------------------------------------------------------------
+
+  FEATURE               SCP                 rsync
+  -------               ---                 -----
+  Speed (first run)     Fast                Similar
+  Speed (repeat runs)   Copies everything   Only changes! Much faster
+  Delta transfer        NO                  YES
+  Resume transfer       NO                  YES (-P flag)
+  Dry run               NO                  YES (-n flag)
+  Exclude files         NO                  YES (--exclude)
+  Mirror/delete         NO                  YES (--delete)
+  Progress display      Limited             YES (--progress)
+  Bandwidth limit       NO                  YES (--bwlimit)
+  Local to local        NO                  YES
+  Best for              Quick one-off copy  Backups, deployments, sync
+  Complexity            Simple              More options
+  Status                Being deprecated    Actively maintained
+
+  WHEN TO USE SCP:
+  → Quick one-time file copy between servers
+  → Simple script that just needs to copy a file
+  → When rsync is not available
+
+  WHEN TO USE rsync:
+  → Regular/repeated file synchronization
+  → Backup scripts (only transfer changes!)
+  → Deployment pipelines (sync code to server)
+  → Large directory synchronization
+  → When you need --exclude, --delete, or resume
+
+---------------------------------------------------------------
+4. REAL WORLD DEVOPS FILE TRANSFER SCENARIOS
+---------------------------------------------------------------
+
+  SCENARIO 1 — Daily Backup Script with rsync:
+
+  #!/bin/bash
+  DATE=$(date +%Y-%m-%d)
+  SOURCE="/var/www/html/"
+  DEST="backup@backupserver:/backups/web/$DATE/"
+  LOG="/var/log/rsync-backup.log"
+
+  echo "Starting backup: $DATE" >> $LOG
+
+  rsync -avz \
+    --exclude='*.log' \
+    --exclude='node_modules' \
+    --exclude='.git' \
+    --delete \
+    --stats \
+    $SOURCE $DEST >> $LOG 2>&1
+
+  echo "Backup complete: $DATE" >> $LOG
+
+  SCENARIO 2 — Deploy Code to Production:
+
+  #!/bin/bash
+  # Dry run first to verify
+  rsync -avzn --exclude='.env' \
+    --exclude='node_modules' \
+    ./dist/ deployer@prod-server:/var/www/app/
+
+  # If looks good, do actual sync
+  read -p "Proceed with deployment? (y/n): " confirm
+  if [ "$confirm" = "y" ]; then
+    rsync -avz --exclude='.env' \
+      --exclude='node_modules' \
+      ./dist/ deployer@prod-server:/var/www/app/
+    echo "Deployment complete!"
+  fi
+
+  SCENARIO 3 — Pull Logs from Production Server:
+
+  # Pull all logs from last 24 hours
+  rsync -avz \
+    --include='*.log' \
+    --exclude='*' \
+    dinesh@prod:/var/log/app/ \
+    ./local-logs/
+
+  # Quick SCP for single log file
+  scp dinesh@prod:/var/log/nginx/error.log ./
+
+  SCENARIO 4 — Mirror Two Servers:
+
+  # Make server2 exact copy of server1
+  rsync -avz --delete \
+    -e "ssh -i ~/.ssh/server-key" \
+    dinesh@server1:/var/www/ \
+    dinesh@server2:/var/www/
+
+  SCENARIO 5 — Backup Home Directory Locally:
+
+  # Run daily via cron or systemd timer
+  rsync -avz \
+    --exclude='.cache' \
+    --exclude='Downloads' \
+    /home/dinesh/ \
+    /mnt/external-drive/dinesh-backup/
+
+  SCENARIO 6 — SCP Config File to Multiple Servers:
+
+  #!/bin/bash
+  SERVERS=("web1" "web2" "web3")
+  CONFIG="/etc/app/config.yml"
+
+  for server in "${SERVERS[@]}"; do
+      echo "Copying to $server..."
+      scp $CONFIG deployer@$server:/etc/app/config.yml
+  done
+  echo "Done!"
+
+---------------------------------------------------------------
+5. REVISION — PACKAGE MANAGEMENT QUICK REFERENCE
+---------------------------------------------------------------
+
+  APT (Ubuntu/Debian):
+    apt update                    → refresh package list
+    apt upgrade -y                → upgrade all packages
+    apt install package -y        → install package
+    apt remove package            → remove (keep configs)
+    apt purge package             → remove + delete configs
+    apt autoremove                → remove orphan packages
+    apt search keyword            → search packages
+    apt list --installed          → list installed
+    apt-cache policy package      → show version info
+    apt-mark hold package         → prevent upgrades
+    dpkg -l | grep package        → check if installed
+    dpkg -S /path/to/file         → find file's package
+
+  DNF/YUM (RHEL/CentOS):
+    dnf install package -y        → install
+    dnf remove package            → remove
+    dnf upgrade -y                → upgrade all
+    dnf search keyword            → search
+    dnf list installed            → list installed
+    dnf history undo last         → undo last action
+    dnf autoremove                → remove orphans
+    dnf clean all                 → clean cache
+
+---------------------------------------------------------------
+6. REVISION — LINUX PROCESSES QUICK REFERENCE
+---------------------------------------------------------------
+
+  VIEW PROCESSES:
+    ps aux                        → all processes
+    ps aux --sort=-%cpu           → sorted by CPU usage
+    pgrep -l nginx                → find by name
+    pstree -p                     → process tree with PIDs
+    top / htop                    → live monitoring
+
+  KILL PROCESSES:
+    kill PID                      → graceful stop (SIGTERM)
+    kill -9 PID                   → force kill (SIGKILL)
+    killall nginx                 → kill by name
+    pkill -u username             → kill user's processes
+
+  JOB CONTROL:
+    command &                     → run in background
+    Ctrl + Z                      → pause process
+    jobs                          → list jobs
+    fg %1                         → bring job 1 to front
+    bg %1                         → resume job 1 background
+    nohup command &               → survive logout
+
+  MONITORING:
+    free -h                       → RAM usage
+    df -h                         → disk space
+    du -sh *                      → folder sizes
+    vmstat 2                      → performance stats
+    uptime                        → load averages
+
+---------------------------------------------------------------
+7. REVISION — systemd & SERVICES QUICK REFERENCE
+---------------------------------------------------------------
+
+  SERVICE CONTROL:
+    systemctl start service       → start now
+    systemctl stop service        → stop now
+    systemctl restart service     → restart
+    systemctl reload service      → reload config only
+    systemctl enable service      → enable on boot
+    systemctl disable service     → disable on boot
+    systemctl enable --now svc    → enable + start NOW
+    systemctl mask service        → completely block
+    systemctl daemon-reload       → reload unit files
+
+  STATUS & LISTING:
+    systemctl status service      → full status + logs
+    systemctl --failed            → show failed services
+    systemctl list-units --type=service
+
+  JOURNALCTL:
+    journalctl -u service         → service logs
+    journalctl -u service -f      → follow live logs
+    journalctl -xe                → recent errors
+    journalctl -b                 → current boot logs
+    journalctl --since "1h ago"   → recent logs
+    journalctl -p err             → error level only
+
+---------------------------------------------------------------
+8. KEY TAKEAWAYS FROM DAY 16
+---------------------------------------------------------------
+
+  [01] SCP uses SSH completely — same keys, same config,
+       same port. If SSH works, SCP works!
+
+  [02] SCP uses -P (capital P) for custom port.
+       SSH uses -p (lowercase p). Don't mix them up!
+
+  [03] rsync only transfers CHANGED data — the delta.
+       This makes it massively faster for repeated transfers!
+
+  [04] TRAILING SLASH IS CRITICAL with rsync:
+       rsync source/  dest/  → copies contents of source
+       rsync source   dest/  → copies source folder itself
+       This is the #1 rsync mistake — always double check!
+
+  [05] Always do a DRY RUN before rsync with --delete:
+       rsync -avzn --delete source/ dest/
+       -n shows what WOULD happen without doing it!
+
+  [06] -avz is the standard rsync combination for DevOps:
+       -a = archive (preserve everything)
+       -v = verbose (see what's happening)
+       -z = compress (save bandwidth)
+
+  [07] --delete makes destination exact mirror of source.
+       Files removed from source → removed from destination.
+       Powerful for deployments. Dangerous with wrong paths!
+
+  [08] rsync -P flag = --partial + --progress
+       Allows resuming interrupted transfers!
+       Essential for large file transfers!
+
+  [09] Revision builds real confidence. Commands that felt
+       unfamiliar days ago start feeling natural.
+       Consistency in practice > speed of learning!
+
+  [10] rsync beats SCP for:
+       → Backups (only transfer changes)
+       → Deployments (exclude node_modules, .git)
+       → Regular sync jobs (mirrors)
+       Use SCP only for quick one-off transfers!
+
+  [11] Always use --exclude for deployment scripts:
+       Exclude .git, node_modules, .env, *.log
+       Never sync sensitive files to production!
+
+  [12] rsync works LOCAL to LOCAL too!
+       Perfect for local backup scripts without network!
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  SCP:
+    scp file user@host:/path/           Upload file
+    scp -r folder/ user@host:/path/     Upload folder
+    scp user@host:/path/file ./         Download file
+    scp -r user@host:/path/ ./local/    Download folder
+    scp -P 2222 file user@host:/path/   Custom port
+    scp -i key.pem file user@host:~/    With SSH key
+    scp *.conf user@host:/etc/app/      Wildcard upload
+
+  rsync:
+    rsync -avz src/ user@host:/dest/    Upload (contents)
+    rsync -avz user@host:/src/ ./dest/  Download
+    rsync -avz src/ dest/               Local sync
+    rsync -avzn src/ dest/              DRY RUN first!
+    rsync -avz --delete src/ dest/      Mirror (careful!)
+    rsync -avzP src/ dest/              With progress+resume
+    rsync -avz --exclude='*.log' src/ dest/   Exclude logs
+    rsync -avz --bwlimit=500 src/ dest/ Limit bandwidth
+    rsync -avz -e "ssh -p 2222" src/ user@host:/dest/
+
+  REMEMBER:
+    SCP -P = capital P for port
+    rsync trailing slash = copies CONTENTS
+    rsync no trailing slash = copies FOLDER
+    Always dry run before --delete!
+
+===============================================================
+   Day 16 Complete! On to Day 17 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
