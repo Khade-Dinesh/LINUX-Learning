@@ -1,0 +1,903 @@
+===============================================================
+120 DAYS OF DEVOPS — DAY 17
+Topic: Cron Jobs Deep Dive — Task Scheduling in Linux
+===============================================================
+
+Author  : Dinesh
+Day     : 17 / 120
+Topic   : cron, crontab, at, systemd timers,
+          Job Scheduling, Automation
+Phase   : Phase 2 (Automation & Scheduling)
+Platform: Linux (Ubuntu / RHEL based)
+===============================================================
+
+TABLE OF CONTENTS
+===============================================================
+
+1. What is Cron? — Introduction & How It Works
+2. Crontab — Syntax Deep Dive
+3. Crontab Commands & Management
+4. Special Cron Strings / Shortcuts
+5. Cron Directories — /etc/cron.*
+6. System-Wide Cron vs User Cron
+7. at & batch Commands — One-Time Scheduling
+8. anacron — For Non 24/7 Systems
+9. Environment Variables in Cron
+10. Cron Logging & Debugging
+11. Real World DevOps Cron Scenarios
+12. systemd Timers — Modern Cron Alternative
+13. Key Takeaways from Day 17
+
+---------------------------------------------------------------
+1. WHAT IS CRON? — INTRODUCTION & HOW IT WORKS
+---------------------------------------------------------------
+
+What is Cron?
+
+cron = Command Run ON (time-based job scheduler)
+
+It is a daemon (background service) that runs scheduled
+tasks automatically at fixed times, dates, or intervals.
+
+The cron daemon checks every MINUTE for scheduled tasks.
+If a task is due → it runs it!
+
+KEY TERMS:
+
+TERM          MEANING
+----          -------
+cron          The daemon/service that runs in background
+crontab       cron table — the file that holds schedules
+cron job      A scheduled task/command in crontab
+crond         The cron daemon process name (RHEL)
+
+HOW CRON WORKS:
+
+1. crond daemon starts at boot (via systemd)
+2. Every minute → reads all crontab files
+3. Checks if any job is due to run RIGHT NOW
+4. If yes → executes the command/script
+5. Output is mailed to user (or logged if redirected)
+6. Goes back to sleep for 1 minute
+7. Repeat forever!
+
+CHECK IF CRON IS RUNNING:
+
+systemctl status cron         → Ubuntu/Debian
+systemctl status crond        → RHEL/CentOS
+
+START / ENABLE CRON:
+
+systemctl start cron          → start now
+systemctl enable cron         → start on boot
+systemctl enable --now cron   → start + enable at once
+
+---------------------------------------------------------------
+2. CRONTAB — SYNTAX DEEP DIVE
+---------------------------------------------------------------
+
+CRONTAB FORMAT (5 time fields + command):
+
+  ┌───────────── minute       (0 - 59)
+  │ ┌─────────── hour         (0 - 23)
+  │ │ ┌───────── day of month (1 - 31)
+  │ │ │ ┌─────── month        (1 - 12)
+  │ │ │ │ ┌───── day of week  (0 - 7) [0 & 7 = Sunday]
+  │ │ │ │ │
+  * * * * *  command to execute
+
+FIELDS EXPLAINED:
+
+FIELD         RANGE     DESCRIPTION
+-----         -----     -----------
+minute        0-59      Which minute to run (0 = top of hour)
+hour          0-23      Which hour (0 = midnight, 12 = noon)
+day of month  1-31      Day number of the month
+month         1-12      Month number (or names: jan, feb...)
+day of week   0-7       0 or 7 = Sunday, 1 = Monday... 6 = Saturday
+
+SPECIAL CHARACTERS IN CRONTAB:
+
+CHARACTER  MEANING         EXAMPLE
+---------  -------         -------
+*          Every/any       * = every minute/hour/day etc.
+,          List/multiple   1,15,30 = at 1st, 15th and 30th
+-          Range           1-5 = 1,2,3,4,5
+/          Step/interval   */5 = every 5 units
+                           0-30/5 = every 5 from 0 to 30
+
+READING CRONTAB EXAMPLES:
+
+CRONTAB ENTRY         MEANING
+-------------         -------
+* * * * *             Every minute of every day
+0 * * * *             Every hour (at :00)
+0 12 * * *            Every day at 12:00 noon
+0 0 * * *             Every day at midnight
+30 6 * * *            Every day at 6:30 AM
+0 6 * * 1             Every Monday at 6:00 AM
+0 9-17 * * 1-5        Every hour 9AM-5PM, Mon-Fri
+*/15 * * * *          Every 15 minutes
+0 */2 * * *           Every 2 hours
+0 0 1 * *             First day of every month at midnight
+0 0 1 1 *             January 1st at midnight (yearly)
+0 0 * * 0             Every Sunday at midnight
+0 3 * * 1,3,5         Mon, Wed, Fri at 3 AM
+0 0 1,15 * *          1st and 15th of every month
+*/5 9-17 * * 1-5      Every 5 min during work hours Mon-Fri
+
+HOW TO READ STEP VALUES (/):
+
+*/5  in minute field  → every 5 minutes  (0,5,10,15...55)
+*/2  in hour field    → every 2 hours    (0,2,4,6...22)
+*/3  in month field   → every 3 months   (1,4,7,10)
+*/10 in minute field  → every 10 minutes (0,10,20,30,40,50)
+
+COMBINING FIELDS — READING EXAMPLES:
+
+"30 8 * * 1-5"
+→ minute=30, hour=8, any day, any month, Mon-Fri
+→ Every weekday at 8:30 AM
+
+"0 0 1 */3 *"
+→ minute=0, hour=0, day=1, every 3 months, any day
+→ Midnight on the 1st of Jan, Apr, Jul, Oct
+
+"*/10 6-22 * * *"
+→ Every 10 min from 6 AM to 10 PM every day
+
+---------------------------------------------------------------
+3. CRONTAB COMMANDS & MANAGEMENT
+---------------------------------------------------------------
+
+CRONTAB COMMAND REFERENCE:
+
+COMMAND             WHAT IT DOES
+-------             ------------
+crontab -e          Edit your crontab (opens in editor)
+crontab -l          List/view your current crontab
+crontab -r          REMOVE/DELETE your entire crontab ⚠️
+crontab -i          Prompt before removing (safer!)
+crontab -u user -e  Edit another user's crontab (as root)
+crontab -u user -l  List another user's crontab
+crontab -u user -r  Remove another user's crontab
+
+⚠️  WARNING: crontab -r DELETES ALL YOUR JOBS!
+    Always use crontab -i (interactive) instead!
+    crontab -ir → prompts "are you sure?" before delete!
+
+EDITING CRONTAB:
+
+crontab -e
+→ Opens your crontab in default editor (nano or vim)
+→ Save & exit → crontab is auto-installed
+→ Cron syntax is validated on save!
+
+SET DEFAULT EDITOR FOR CRONTAB:
+
+export VISUAL=nano    → use nano (add to ~/.bashrc)
+export EDITOR=nano    → alternative env variable
+
+VIEWING YOUR CRONTAB:
+
+crontab -l
+
+BACKUP YOUR CRONTAB:
+
+crontab -l > ~/my-crontab-backup.txt     → save to file
+crontab ~/my-crontab-backup.txt          → restore from file
+
+CRONTAB FILE LOCATIONS:
+
+/var/spool/cron/crontabs/username   → Ubuntu (user crontabs)
+/var/spool/cron/username            → RHEL (user crontabs)
+/etc/crontab                        → System-wide crontab
+/etc/cron.d/                        → Drop-in cron files
+
+---------------------------------------------------------------
+4. SPECIAL CRON STRINGS / SHORTCUTS
+---------------------------------------------------------------
+
+Instead of 5 fields, you can use these shortcuts:
+
+STRING       EQUIVALENT      MEANING
+------       ----------      -------
+@reboot      (none)          Run once at system startup
+@yearly      0 0 1 1 *       Once a year, Jan 1st midnight
+@annually    0 0 1 1 *       Same as @yearly
+@monthly     0 0 1 * *       Once a month, 1st at midnight
+@weekly      0 0 * * 0       Once a week, Sunday midnight
+@daily       0 0 * * *       Once a day at midnight
+@midnight    0 0 * * *       Same as @daily
+@hourly      0 * * * *       Once an hour at :00 minutes
+
+USAGE EXAMPLES:
+
+@reboot  /home/dinesh/startup-script.sh       → run at boot
+@daily   /usr/local/bin/backup.sh             → daily backup
+@weekly  /usr/local/bin/cleanup.sh            → weekly cleanup
+@monthly /usr/local/bin/report.sh             → monthly report
+@hourly  /usr/local/bin/health-check.sh       → hourly check
+
+@reboot IS VERY USEFUL FOR:
+→ Starting services not managed by systemd
+→ Mounting drives or setting up environment
+→ Running initialization scripts on boot
+
+---------------------------------------------------------------
+5. CRON DIRECTORIES — /etc/cron.*
+---------------------------------------------------------------
+
+Linux has special directories for dropping cron scripts:
+
+DIRECTORY           RUNS
+---------           ----
+/etc/cron.hourly/   Every hour
+/etc/cron.daily/    Every day
+/etc/cron.weekly/   Every week
+/etc/cron.monthly/  Every month
+/etc/cron.d/        Custom schedules (like /etc/crontab)
+
+HOW TO USE:
+
+1. Write your script
+2. Make it executable: chmod +x /etc/cron.daily/myscript
+3. Place it in the correct directory
+4. cron/anacron runs it automatically!
+
+NO CRONTAB EDITING NEEDED! Just drop the script!
+
+RULES FOR SCRIPTS IN CRON DIRECTORIES:
+→ Must be executable (chmod +x)
+→ Must NOT have file extension (no .sh!)
+→ Must have proper shebang (#!/bin/bash)
+→ Owned by root with correct permissions
+
+EXAMPLE — Create a daily cleanup:
+
+cat > /etc/cron.daily/cleanup-tmp << 'EOF'
+#!/bin/bash
+find /tmp -type f -mtime +7 -delete
+find /var/tmp -type f -mtime +30 -delete
+EOF
+
+chmod +x /etc/cron.daily/cleanup-tmp
+
+WHAT IS /etc/cron.d/?
+
+→ Like /etc/crontab but separate files
+→ Used by packages to install their own cron jobs
+→ Each file uses full crontab syntax including USERNAME field
+→ Root can drop cron files here without editing crontab
+
+FORMAT of /etc/cron.d/ files:
+
+# min hour dom month dow USER command
+  0   2   *   *    *   root /usr/local/bin/backup.sh
+
+---------------------------------------------------------------
+6. SYSTEM-WIDE CRON vs USER CRON
+---------------------------------------------------------------
+
+TWO TYPES OF CRONTABS:
+
+USER CRONTAB:
+→ Edited with: crontab -e
+→ Stored at: /var/spool/cron/crontabs/USERNAME
+→ Runs as: that specific user
+→ No username field in crontab syntax
+→ Best for: user-specific tasks
+
+SYSTEM CRONTAB (/etc/crontab):
+→ Edited directly: nano /etc/crontab
+→ Has an extra USERNAME field in syntax
+→ Runs as: specified user
+→ Managed by root
+→ Best for: system-wide tasks
+
+/etc/crontab FORMAT (with username field):
+
+# min hour dom month dow USER  command
+  17  *   *   *    *   root  cd / && run-parts --report /etc/cron.hourly
+  25  6   *   *    *   root  test -x /usr/sbin/anacron || ...
+  0   0   *   *    7   root  /usr/local/bin/weekly-cleanup.sh
+  30  8   *   *  1-5  dinesh /home/dinesh/work-reminder.sh
+
+USER vs SYSTEM CRON — COMPARISON:
+
+FEATURE          USER CRON       SYSTEM CRON (/etc/crontab)
+-------          ---------       --------------------------
+Edit command     crontab -e      nano /etc/crontab (as root)
+Username field   NO              YES (required!)
+Runs as          Your user       Specified user
+Who manages it   Any user        Only root
+Location         /var/spool/...  /etc/crontab
+
+---------------------------------------------------------------
+7. at & batch COMMANDS — ONE-TIME SCHEDULING
+---------------------------------------------------------------
+
+What is at?
+
+at = Run a command ONCE at a specific time (not recurring)
+cron = recurring; at = one-time!
+
+INSTALL at:
+
+apt install at -y         → Ubuntu
+dnf install at -y         → RHEL
+
+systemctl enable --now atd → start the at daemon
+
+at COMMAND SYNTAX:
+
+at TIME
+at TIME DATE
+at TIME + DURATION
+
+TIME FORMATS:
+
+at 3:30 PM              → today at 3:30 PM
+at 15:30                → 24-hour format
+at noon                 → today at 12:00
+at midnight             → today at 00:00
+at now + 5 minutes      → 5 minutes from now
+at now + 2 hours        → 2 hours from now
+at now + 3 days         → 3 days from now
+at 9am tomorrow         → tomorrow at 9 AM
+at 9am next monday      → next Monday at 9 AM
+at 10:00 July 25        → July 25th at 10 AM
+
+USING at (INTERACTIVE):
+
+at now + 10 minutes
+at> /home/dinesh/script.sh
+at> <Ctrl+D to save>
+
+USING at WITH ECHO (Non-interactive):
+
+echo "/home/dinesh/script.sh" | at now + 1 hour
+echo "systemctl restart nginx" | at 2am
+
+MANAGING at JOBS:
+
+COMMAND       WHAT IT DOES
+-------       ------------
+atq           List pending at jobs (queue)
+at -l         Same as atq — list jobs
+atrm JOBID    Remove/cancel an at job
+at -c JOBID   Show contents of a scheduled job
+
+EXAMPLE WORKFLOW:
+
+$ echo "/usr/local/bin/send-report.sh" | at 6pm
+job 3 at Fri May 15 18:00:00 2026
+
+$ atq
+3   Fri May 15 18:00:00 2026 a dinesh
+
+$ atrm 3     → cancel job 3
+
+batch COMMAND:
+
+batch = Like at but runs when system load drops below 1.5
+Useful for resource-heavy tasks you don't want to time exactly!
+
+echo "/usr/local/bin/heavy-job.sh" | batch
+
+---------------------------------------------------------------
+8. anacron — FOR NON 24/7 SYSTEMS
+---------------------------------------------------------------
+
+What is anacron?
+
+anacron = Runs missed cron jobs after system was OFF.
+
+cron only runs if the system is ON at the scheduled time.
+If system was off at 2 AM → cron job MISSED!
+anacron checks if a job was missed → runs it on next boot!
+
+anacron CONFIGURATION — /etc/anacrontab:
+
+PERIOD  DELAY  JOB-ID    COMMAND
+------  -----  ------    -------
+1       5      cron.daily    run-parts /etc/cron.daily
+7       10     cron.weekly   run-parts /etc/cron.weekly
+@monthly 15   cron.monthly  run-parts /etc/cron.monthly
+
+FIELD EXPLANATIONS:
+
+PERIOD  = How often (in days). 1=daily, 7=weekly
+DELAY   = Minutes to wait after boot before running
+JOB-ID  = Unique identifier for the job
+COMMAND = What to run
+
+WHY DELAY?
+→ Gives system time to fully boot
+→ Prevents all jobs running at same time
+→ Staggers the load on startup
+
+anacron vs cron:
+
+FEATURE       CRON              anacron
+-------       ----              -------
+Granularity   Minute-level      Daily minimum
+Missed jobs   Lost if system off  Catches up!
+Best for      Servers (always on) Laptops/desktops
+Runs as       Any user          Root only
+
+---------------------------------------------------------------
+9. ENVIRONMENT VARIABLES IN CRON
+---------------------------------------------------------------
+
+Cron runs in a VERY minimal environment!
+Variables available in your terminal may NOT be in cron!
+
+DEFAULT CRON ENVIRONMENT:
+
+HOME=/home/username
+SHELL=/bin/sh         (NOT bash!)
+PATH=/usr/bin:/bin    (very limited!)
+LOGNAME=username
+MAILTO=username
+
+COMMON PROBLEMS DUE TO ENVIRONMENT:
+
+→ Script works in terminal but FAILS in cron
+→ Commands not found (PATH too limited)
+→ Python/Node scripts fail (env not set)
+→ Wrong SHELL causing syntax errors
+
+SOLUTION 1 — Set variables at top of crontab:
+
+crontab -e
+
+# Set environment at top of crontab
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=dinesh@example.com
+HOME=/home/dinesh
+
+# Now your jobs:
+0 2 * * * /home/dinesh/backup.sh
+
+SOLUTION 2 — Use full paths in commands:
+
+# Instead of:
+0 2 * * * python3 script.py           (WRONG — might fail)
+
+# Use full path:
+0 2 * * * /usr/bin/python3 /home/dinesh/script.py   (CORRECT)
+
+# Instead of:
+0 * * * * nginx -s reload             (WRONG)
+
+# Use full path:
+0 * * * * /usr/sbin/nginx -s reload   (CORRECT)
+
+SOLUTION 3 — Source the environment in script:
+
+#!/bin/bash
+source /home/dinesh/.bashrc    # load user environment
+# ... rest of script
+
+SOLUTION 4 — Use env in shebang:
+
+#!/usr/bin/env python3         # finds python3 in PATH
+
+MAILTO — EMAIL OUTPUT CONTROL:
+
+MAILTO=dinesh@example.com   → email output to this address
+MAILTO=""                   → disable email (suppress output)
+
+If MAILTO is set and mail is configured → cron emails output!
+Most servers: redirect output to log files instead of email.
+
+---------------------------------------------------------------
+10. CRON LOGGING & DEBUGGING
+---------------------------------------------------------------
+
+WHERE CRON LOGS GO:
+
+/var/log/syslog          → Ubuntu (all cron activity)
+/var/log/cron            → RHEL/CentOS
+journalctl -u cron       → systemd journal
+
+VIEW CRON LOGS:
+
+grep CRON /var/log/syslog              → all cron events
+grep CRON /var/log/syslog | tail -50   → last 50 entries
+journalctl -u cron -f                  → live cron log
+journalctl -u crond --since "1 hour ago"
+
+REDIRECTING OUTPUT IN CRONTAB:
+
+# Discard all output (silent mode):
+0 2 * * * /usr/local/bin/backup.sh > /dev/null 2>&1
+
+# Save output to log file:
+0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
+
+# Save stdout and stderr to different files:
+0 2 * * * /usr/local/bin/script.sh >> /var/log/out.log 2>> /var/log/err.log
+
+# Timestamp in log:
+0 2 * * * echo "$(date) - Starting backup" >> /var/log/backup.log && /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
+
+OUTPUT REDIRECTION EXPLAINED:
+
+SYMBOL    MEANING
+------    -------
+>         Redirect stdout (overwrite)
+>>        Redirect stdout (append)
+2>        Redirect stderr (overwrite)
+2>>       Redirect stderr (append)
+2>&1      Redirect stderr to same place as stdout
+/dev/null The "black hole" — discard all output
+
+DEBUGGING CRON JOBS:
+
+STEP 1 — Check cron is running:
+systemctl status cron
+
+STEP 2 — Check cron logs:
+grep CRON /var/log/syslog | tail -20
+
+STEP 3 — Test script manually first:
+/home/dinesh/backup.sh   → run it directly
+
+STEP 4 — Test with minimal environment (simulate cron):
+env -i HOME=/home/dinesh PATH=/usr/bin:/bin /bin/sh /home/dinesh/backup.sh
+
+STEP 5 — Check file permissions:
+ls -la /home/dinesh/backup.sh     → must be executable!
+chmod +x /home/dinesh/backup.sh   → make executable
+
+STEP 6 — Check for typos in crontab:
+crontab -l                        → review the entry
+
+STEP 7 — Check output redirection:
+Add >> /tmp/debug.log 2>&1 to your crontab entry temporarily
+
+COMMON CRON MISTAKES:
+
+MISTAKE                   FIX
+-------                   ---
+Missing execute permission   chmod +x script.sh
+Relative paths in script     Use absolute paths everywhere!
+Wrong SHELL syntax            Set SHELL=/bin/bash in crontab
+Missing shebang               Add #!/bin/bash at top of script
+Wrong time calculation        Use crontab.guru to verify!
+crontab -r instead of -e     Use crontab -ir (interactive)
+Script uses terminal env      Set PATH in crontab or script
+Forgot 2>&1 in redirect      Add 2>&1 to catch all errors
+
+CRONTAB GURU — ONLINE VALIDATOR:
+
+https://crontab.guru
+
+→ Paste your cron expression
+→ Shows human-readable meaning in real time
+→ MUST USE for verifying complex schedules!
+→ Example: "*/5 9-17 * * 1-5" → "At every 5th minute past
+   every hour from 9 through 17 on every day-of-week from
+   Monday through Friday."
+
+---------------------------------------------------------------
+11. REAL WORLD DEVOPS CRON SCENARIOS
+---------------------------------------------------------------
+
+SCENARIO 1 — Daily Database Backup:
+
+crontab -e
+
+# Daily DB backup at 2 AM with timestamp log
+0 2 * * * /usr/local/bin/db-backup.sh >> /var/log/db-backup.log 2>&1
+
+/usr/local/bin/db-backup.sh:
+#!/bin/bash
+DATE=$(date +%Y-%m-%d)
+DB_NAME="myapp"
+BACKUP_DIR="/backups/db"
+LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
+
+mkdir -p $BACKUP_DIR
+
+echo "$LOG_PREFIX Starting backup of $DB_NAME" >> /var/log/db-backup.log
+
+mysqldump -u root -p"$DB_PASSWORD" $DB_NAME | \
+  gzip > $BACKUP_DIR/${DB_NAME}_${DATE}.sql.gz
+
+echo "$LOG_PREFIX Backup complete: ${DB_NAME}_${DATE}.sql.gz" >> /var/log/db-backup.log
+
+# Delete backups older than 30 days
+find $BACKUP_DIR -name "*.sql.gz" -mtime +30 -delete
+echo "$LOG_PREFIX Old backups cleaned up" >> /var/log/db-backup.log
+
+SCENARIO 2 — Disk Space Alert:
+
+# Check disk every 15 minutes; email if >80% full
+*/15 * * * * /usr/local/bin/disk-alert.sh
+
+#!/bin/bash
+THRESHOLD=80
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+
+if [ "$DISK_USAGE" -gt "$THRESHOLD" ]; then
+    echo "ALERT: Disk usage is ${DISK_USAGE}% on $(hostname)" | \
+        mail -s "Disk Space Alert" dinesh@example.com
+fi
+
+SCENARIO 3 — Auto Log Rotation / Cleanup:
+
+# Clean logs older than 7 days — runs daily at 3 AM
+0 3 * * * find /var/log/app -name "*.log" -mtime +7 -delete >> /var/log/cleanup.log 2>&1
+
+# Clean /tmp older than 3 days — runs daily at 4 AM
+0 4 * * * find /tmp -type f -mtime +3 -delete
+
+SCENARIO 4 — Restart Service If Down:
+
+# Check nginx every 5 minutes; restart if not running
+*/5 * * * * systemctl is-active --quiet nginx || systemctl restart nginx
+
+SCENARIO 5 — Sync Files to Backup Server:
+
+# rsync backup every night at 1 AM
+0 1 * * * rsync -avz --delete /var/www/html/ backup@192.168.1.100:/backups/web/ >> /var/log/rsync.log 2>&1
+
+SCENARIO 6 — Generate Daily Report:
+
+# Run report script at 8 AM every weekday
+0 8 * * 1-5 /home/dinesh/scripts/daily-report.py >> /var/log/reports.log 2>&1
+
+SCENARIO 7 — Certificate Renewal (Let's Encrypt):
+
+# Renew SSL certs twice daily (certbot recommended)
+0 */12 * * * /usr/bin/certbot renew --quiet >> /var/log/certbot.log 2>&1
+
+SCENARIO 8 — Run at Boot:
+
+# Start custom monitoring agent at boot
+@reboot /home/dinesh/monitor-agent.sh &
+
+# Clear temp files on each reboot
+@reboot find /tmp -type f -delete
+
+SCENARIO 9 — Multiple Jobs Together:
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=""
+
+# ===== BACKUPS =====
+0 2 * * *     /usr/local/bin/db-backup.sh >> /var/log/db-backup.log 2>&1
+0 3 * * *     /usr/local/bin/files-backup.sh >> /var/log/files.log 2>&1
+
+# ===== MONITORING =====
+*/5 * * * *   /usr/local/bin/health-check.sh > /dev/null 2>&1
+*/15 * * * *  /usr/local/bin/disk-alert.sh > /dev/null 2>&1
+
+# ===== CLEANUP =====
+0 4 * * *     find /tmp -type f -mtime +1 -delete
+0 4 * * 0     find /var/log/app -name "*.log" -mtime +30 -delete
+
+# ===== REPORTS =====
+0 8 * * 1-5   /home/dinesh/daily-report.sh >> /var/log/reports.log 2>&1
+0 9 * * 1     /home/dinesh/weekly-summary.sh >> /var/log/weekly.log 2>&1
+
+# ===== MAINTENANCE =====
+0 0 1 * *     /usr/local/bin/monthly-cleanup.sh >> /var/log/monthly.log 2>&1
+@reboot       /home/dinesh/startup.sh &
+
+---------------------------------------------------------------
+12. systemd TIMERS — MODERN CRON ALTERNATIVE
+---------------------------------------------------------------
+
+What are systemd Timers?
+
+systemd timers = Modern alternative to cron.
+More powerful, better logging, integrated with systemd.
+More and more DevOps tasks moving to systemd timers!
+
+TWO FILES NEEDED:
+
+1. .service file — defines WHAT to run
+2. .timer file   — defines WHEN to run it
+
+EXAMPLE — Create a daily backup timer:
+
+STEP 1 — Create the service file:
+
+/etc/systemd/system/daily-backup.service
+
+[Unit]
+Description=Daily Backup Job
+After=network.target
+
+[Service]
+Type=oneshot
+User=dinesh
+ExecStart=/usr/local/bin/backup.sh
+StandardOutput=journal
+StandardError=journal
+
+STEP 2 — Create the timer file:
+
+/etc/systemd/system/daily-backup.timer
+
+[Unit]
+Description=Run Daily Backup at 2 AM
+Requires=daily-backup.service
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=daily-backup.service
+
+[Install]
+WantedBy=timers.target
+
+STEP 3 — Enable and start:
+
+systemctl daemon-reload
+systemctl enable --now daily-backup.timer
+
+STEP 4 — Check timer status:
+
+systemctl list-timers                    → see all active timers
+systemctl status daily-backup.timer      → timer status
+journalctl -u daily-backup.service       → view logs
+
+OnCalendar EXAMPLES:
+
+EXPRESSION              MEANING
+----------              -------
+*-*-* *:*:*             Every minute
+*-*-* 02:00:00          Every day at 2 AM
+Mon *-*-* 09:00:00      Every Monday at 9 AM
+*-*-1 00:00:00          First of every month
+weekly                  Every week
+daily                   Every day
+hourly                  Every hour
+@reboot                 At system boot
+
+ADVANTAGES OF systemd TIMERS OVER CRON:
+
+FEATURE          CRON          systemd TIMERS
+-------          ----          --------------
+Logging          Limited       Full journal integration
+Missed jobs      Lost if off   Persistent=true catches up!
+Dependencies     None          Can depend on services/network
+Output           Email/file    systemd journal (journalctl)
+Error handling   Manual        Systemd tracks exit codes
+Debugging        grep logs     journalctl -u service.name
+Security         User-based    Supports sandboxing!
+Randomize delay  No            RandomizedDelaySec=
+
+---------------------------------------------------------------
+13. KEY TAKEAWAYS FROM DAY 17
+---------------------------------------------------------------
+
+[01] cron reads crontab every MINUTE. Jobs run when time
+     fields match. Missed jobs are GONE unless using anacron!
+
+[02] CRONTAB FORMAT — 5 fields + command:
+     * * * * * command
+     │ │ │ │ └─ day of week (0-7, 0&7=Sunday)
+     │ │ │ └─── month (1-12)
+     │ │ └───── day of month (1-31)
+     │ └─────── hour (0-23)
+     └───────── minute (0-59)
+
+[03] SPECIAL CHARACTERS:
+     * = any/every
+     , = list (1,15,30)
+     - = range (1-5)
+     / = step (*/5 = every 5)
+
+[04] crontab -r DELETES ALL JOBS! No undo!
+     Use crontab -ir for safety prompt!
+     Always backup: crontab -l > backup.txt
+
+[05] Cron runs with MINIMAL environment!
+     Set SHELL, PATH at top of crontab
+     Use FULL PATHS to commands in scripts!
+     This is the #1 reason cron jobs fail!
+
+[06] ALWAYS redirect output in cron:
+     >> /var/log/job.log 2>&1
+     Without this → no output → no debugging!
+
+[07] @reboot is very powerful for startup scripts.
+     Runs once every time system boots!
+     @daily, @weekly, @monthly = easy shortcuts!
+
+[08] Use crontab.guru to validate cron expressions!
+     Paste expression → see human-readable translation.
+     Essential for complex schedules!
+
+[09] DRY RUN your scripts manually before putting in cron.
+     Simulate cron environment:
+     env -i HOME=/home/user PATH=/usr/bin:/bin /bin/sh script.sh
+
+[10] anacron handles MISSED jobs on laptops/desktops.
+     Runs /etc/cron.daily|weekly|monthly after boot.
+     Use cron for servers, anacron for laptops!
+
+[11] /etc/cron.d/ directory = drop cron files as root.
+     Packages use this to install their own cron jobs.
+     Full crontab syntax including USERNAME field!
+
+[12] systemd timers are the MODERN ALTERNATIVE to cron.
+     Better logging, dependencies, missed job handling.
+     Learning both is important for modern DevOps!
+
+[13] at command = one-time scheduled task (not recurring).
+     cron = recurring; at = once.
+     atq to list, atrm JOBID to cancel!
+
+[14] DEBUGGING ORDER:
+     1. Check cron is running: systemctl status cron
+     2. Check logs: grep CRON /var/log/syslog
+     3. Test script manually first
+     4. Simulate cron environment
+     5. Check permissions: chmod +x script.sh
+     6. Verify full paths used everywhere
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+CRONTAB MANAGEMENT:
+crontab -e           Edit your crontab
+crontab -l           List your crontab
+crontab -ir          Remove crontab (with prompt!)
+crontab -l > bak.txt Backup your crontab
+
+CRONTAB SYNTAX:
+* * * * * command     Every minute
+0 * * * * command     Every hour
+0 2 * * * command     Daily at 2 AM
+0 2 * * 1 command     Every Monday at 2 AM
+*/15 * * * * command  Every 15 minutes
+0 9-17 * * 1-5 cmd    Hourly, 9-5, weekdays only
+
+SPECIAL STRINGS:
+@reboot    Run at boot
+@daily     Run daily at midnight
+@weekly    Run weekly on Sunday midnight
+@monthly   Run monthly on 1st at midnight
+@hourly    Run every hour at :00
+
+CRON DIRECTORIES:
+/etc/cron.hourly/    Drop scripts here for hourly run
+/etc/cron.daily/     Drop scripts here for daily run
+/etc/cron.weekly/    Drop scripts here for weekly run
+/etc/cron.monthly/   Drop scripts here for monthly run
+/etc/cron.d/         Custom schedule files (root)
+
+OUTPUT HANDLING:
+>> /var/log/job.log 2>&1   Append all output to log
+> /dev/null 2>&1           Discard all output (silent)
+2>&1                       Redirect stderr to stdout
+
+at COMMAND (ONE-TIME):
+echo "cmd" | at now + 1 hour
+echo "cmd" | at 2am tomorrow
+atq                          List pending jobs
+atrm JOBID                   Cancel a job
+
+DEBUGGING:
+grep CRON /var/log/syslog    Check cron logs
+journalctl -u cron -f        Live cron log
+systemctl status cron        Is cron running?
+chmod +x script.sh           Fix permission
+
+USEFUL RESOURCE:
+https://crontab.guru         Validate cron expressions online!
+
+===============================================================
+Day 17 Complete! On to Day 18 Tomorrow! 🔥
+GitHub: #120DaysOfDevOps
+===============================================================
