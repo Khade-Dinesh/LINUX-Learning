@@ -1,0 +1,656 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 18
+   Topic: Revision & Hands-On Practice
+          Processes & Monitoring | Package Management | systemd
+===============================================================
+
+Author   : Dinesh
+Day      : 18 / 120
+Topic    : Revision — Linux Processes & Monitoring,
+           Package Management, systemd & Services
+Platform : Linux (Ubuntu / RHEL based)
+Type     : Hands-On Practice & Revision Day
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  Processes & Monitoring — Revision
+  2.  Package Management — Revision
+  3.  systemd & Services — Revision
+  4.  Hands-On Practice Scenarios
+  5.  Debugging Workflows Practiced Today
+  6.  Key Takeaways from Day 18
+
+---------------------------------------------------------------
+1. PROCESSES & MONITORING — REVISION
+---------------------------------------------------------------
+
+  VIEWING PROCESSES:
+
+  COMMAND                     WHAT IT DOES
+  -------                     ------------
+  ps aux                      Show ALL processes from all users
+  ps aux --sort=-%cpu         Sort processes by CPU usage
+  ps aux --sort=-%mem         Sort processes by memory usage
+  ps -ef                      Full format listing
+  ps -u username              Show processes of specific user
+  ps -p PID                   Show specific process by PID
+  pgrep -l nginx              Find process ID by name
+  pgrep -u dinesh             Find all PIDs owned by user
+  pstree -p                   Show process tree with PIDs
+  pstree -u                   Show process tree with usernames
+
+  UNDERSTANDING ps aux OUTPUT:
+
+  USER    → who owns the process
+  PID     → unique process ID
+  %CPU    → CPU usage percentage
+  %MEM    → memory usage percentage
+  VSZ     → virtual memory size
+  RSS     → actual physical memory used
+  STAT    → process state (R=running S=sleeping Z=zombie)
+  COMMAND → command that started the process
+
+  PROCESS STATES REVISION:
+
+  STATE             MEANING
+  -----             -------
+  R (Running)       Actively using CPU
+  S (Sleeping)      Waiting for event or I/O
+  T (Stopped)       Paused by Ctrl+Z or signal
+  Z (Zombie)        Finished but parent not cleaned up
+  D (Uninterruptible) Waiting for disk I/O
+
+  REAL TIME MONITORING:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  top                   Live CPU & memory monitoring
+  htop                  Better top — colored, easier to read
+  top -u username       Show only specific user processes
+  top -p PID            Monitor specific process
+  htop -u username      Filter by user in htop
+  htop -p PID1,PID2     Monitor specific PIDs
+
+  READING LOAD AVERAGE (uptime):
+
+  uptime output:
+  10:30 up 2 days, 3:45, 2 users, load average: 0.15, 0.10, 0.05
+                                                  1min  5min  15min
+
+  RULE: If load average > number of CPU cores = server struggling!
+  Check CPU cores: nproc OR grep -c processor /proc/cpuinfo
+
+  MEMORY MONITORING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  free -h           Human readable RAM usage
+  free -m           Show in megabytes
+  free -s 2         Update every 2 seconds
+
+  READING free -h:
+               total    used    free    shared  buff/cache  available
+  Mem:          7.7G    2.1G    1.2G    234M      4.4G        5.1G
+
+  → Look at "available" column — NOT "free"!
+  → available = truly free memory for new processes
+  → buff/cache = kernel cache (can be freed if needed)
+  → If Swap is being used = RAM is full = problem!
+
+  DISK MONITORING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  df -h             Human readable disk space
+  df -i             Show inode usage
+  du -sh *          Size of everything in current dir
+  du -sh folder/    Total size of specific folder
+  du --max-depth=1  One level deep folder sizes
+
+  DISK FULL DEBUGGING WORKFLOW:
+  Step 1: df -h             → find which partition is full
+  Step 2: du -sh /*         → find biggest top level dir
+  Step 3: du -sh /var/*     → dig deeper
+  Step 4: du -sh /var/log/* → find biggest log files
+  Step 5: ls -lhS /var/log/ → sort logs by size
+
+  PERFORMANCE MONITORING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  vmstat 2          CPU, memory, IO stats every 2 seconds
+  vmstat 2 10       Update every 2s, show 10 times
+  iostat            Disk I/O statistics
+  iostat -x         Extended disk statistics
+  sar -u 2 5        CPU usage stats
+
+  READING vmstat KEY COLUMNS:
+  r  → processes waiting for CPU (high = CPU bottleneck)
+  b  → processes waiting for I/O (high = disk bottleneck)
+  wa → waiting for I/O % (high = disk is the problem!)
+  si → swap in from disk (bad!)
+  so → swap out to disk (very bad!)
+
+  SIGNALS & KILL REVISION:
+
+  SIGNAL    NUMBER    MEANING
+  ------    ------    -------
+  SIGTERM     15      Graceful stop (default kill signal)
+  SIGKILL      9      Force kill — cannot be ignored!
+  SIGHUP       1      Reload configuration
+  SIGINT       2      Interrupt (like Ctrl+C)
+  SIGSTOP     19      Pause process
+
+  KILL COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  kill PID              Graceful stop (SIGTERM)
+  kill -9 PID           Force kill (SIGKILL)
+  kill -1 PID           Reload config (SIGHUP)
+  killall nginx         Kill all nginx processes
+  pkill -u dinesh       Kill all of user's processes
+  kill -l               List all available signals
+
+  RULE: Always try SIGTERM first. Use SIGKILL only as last resort!
+  SIGTERM lets process clean up. SIGKILL gives no chance to clean up.
+
+  JOB CONTROL REVISION:
+
+  COMMAND       WHAT IT DOES
+  -------       ------------
+  command &     Start process in background
+  Ctrl + Z      Pause/suspend foreground process
+  jobs          List all background/stopped jobs
+  fg %1         Bring job 1 to foreground
+  bg %1         Resume job 1 in background
+  nohup cmd &   Run process that survives logout!
+  disown -h %1  Remove job from shell — keeps running
+
+  /proc FILESYSTEM:
+  /proc/PID/        → folder for every running process
+  /proc/PID/status  → process status details
+  /proc/PID/cmdline → command that started it
+  /proc/cpuinfo     → CPU information
+  /proc/meminfo     → memory information
+  /proc/uptime      → system uptime
+
+---------------------------------------------------------------
+2. PACKAGE MANAGEMENT — REVISION
+---------------------------------------------------------------
+
+  APT COMPLETE REVISION (Ubuntu/Debian):
+
+  INSTALL & REMOVE:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  apt update                    Refresh package list (NOT install!)
+  apt upgrade -y                Upgrade all packages
+  apt install package -y        Install package
+  apt install package=1.2.3     Install specific version
+  apt reinstall package         Reinstall package
+  apt remove package            Remove (keep config files)
+  apt purge package             Remove + delete config files
+  apt autoremove                Remove unused dependencies
+  apt --fix-broken install      Fix broken dependencies
+
+  remove vs purge:
+  → remove  keeps config files behind
+  → purge   removes EVERYTHING including configs
+  → ALWAYS use purge for complete clean uninstall!
+
+  SEARCHING & QUERYING:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  apt search keyword            Search available packages
+  apt show package              Show package details
+  apt list --installed          List installed packages
+  apt list --upgradeable        List packages with updates
+  apt-cache policy package      Show installed & available versions
+  apt-cache depends package     Show what package depends on
+  apt-cache rdepends package    Show what depends on this package
+  dpkg -l | grep package        Check if specific package installed
+  dpkg -L package               List all files installed by package
+  dpkg -S /path/to/file         Find which package owns this file!
+
+  dpkg -S use case:
+  → Find a binary on server and don't know where it came from?
+  → dpkg -S /usr/bin/binary → tells you exactly which package!
+
+  HOLD & UNHOLD PACKAGES:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  apt-mark hold package         Prevent package from upgrading
+  apt-mark unhold package       Allow upgrading again
+  apt-mark showhold             List all held packages
+
+  WHY HOLD MATTERS IN DEVOPS:
+  → Running apt upgrade on production server
+  → Database version changes unexpectedly
+  → Application breaks!
+  → apt-mark hold prevents this disaster!
+
+  ADDING THIRD PARTY REPOSITORY:
+
+  Step 1: Download & add GPG key
+  curl -fsSL https://repo-url/gpg | sudo gpg \
+    --dearmor -o /usr/share/keyrings/repo-key.gpg
+
+  Step 2: Add repository
+  echo "deb [signed-by=/usr/share/keyrings/repo-key.gpg] \
+    https://repo-url/ distribution component" \
+    | sudo tee /etc/apt/sources.list.d/repo.list
+
+  Step 3: Update and install
+  sudo apt update
+  sudo apt install package
+
+  ALWAYS verify with GPG key! Never add untrusted repos!
+
+  CLEANING:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  apt clean         Remove all cached .deb files
+  apt autoclean     Remove only outdated cache files
+  apt autoremove    Remove orphaned packages
+
+  DNF REVISION (RHEL/CentOS 8+):
+
+  COMMAND                   WHAT IT DOES
+  -------                   ------------
+  dnf install package -y    Install package
+  dnf remove package        Remove package
+  dnf upgrade -y            Upgrade all
+  dnf search keyword        Search packages
+  dnf info package          Show package info
+  dnf list installed        List installed packages
+  dnf autoremove            Remove orphaned packages
+  dnf clean all             Clean all cache
+  dnf history               Show transaction history
+  dnf history undo last     UNDO last package action!
+  dnf repolist              List enabled repositories
+  rpm -qf /path/to/file     Find which package owns file
+
+  CRITICAL RULE:
+  apt update  → refreshes LIST only (does NOT install!)
+  apt upgrade → actually INSTALLS the updates
+  ALWAYS run update BEFORE upgrade!
+
+---------------------------------------------------------------
+3. systemd & SERVICES — REVISION
+---------------------------------------------------------------
+
+  CORE systemctl COMMANDS:
+
+  STARTING & STOPPING:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  systemctl start service       Start service RIGHT NOW
+  systemctl stop service        Stop service
+  systemctl restart service     Stop then start
+  systemctl reload service      Reload config without restart
+  systemctl reload-or-restart   Reload if possible else restart
+
+  start vs enable — THE KEY DIFFERENCE:
+  start  → starts service NOW (this session only)
+  enable → starts service ON EVERY BOOT
+  Use enable --now to do BOTH at once!
+
+  ENABLE & DISABLE:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  systemctl enable service      Enable auto-start on boot
+  systemctl disable service     Disable auto-start on boot
+  systemctl enable --now svc    Enable AND start immediately!
+  systemctl disable --now svc   Disable AND stop immediately!
+  systemctl is-enabled service  Check if boot enabled
+
+  MASKING — THE COMPLETE BLOCK:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  systemctl mask service        Completely block — cannot start!
+  systemctl unmask service      Remove the block
+
+  disable vs mask:
+  disable → won't auto-start (but CAN be started manually)
+  mask    → CANNOT be started at all — completely blocked!
+
+  STATUS & CHECKING:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  systemctl status service      Full status + recent logs
+  systemctl is-active service   active or inactive?
+  systemctl is-enabled service  enabled or disabled?
+  systemctl is-failed service   Check if service failed
+  systemctl --failed            List ALL failed services!
+
+  LISTING SERVICES:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  systemctl list-units                  All active units
+  systemctl list-units --type=service   All services
+  systemctl list-units --state=failed   Failed services
+  systemctl list-units --state=running  Running services
+  systemctl list-unit-files             All unit files
+
+  UNIT FILE MANAGEMENT:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  systemctl cat service         Show unit file content
+  systemctl edit service        Create override for unit
+  systemctl show service        Show all unit properties
+  systemctl daemon-reload       Reload after editing units!
+
+  ALWAYS run daemon-reload after editing unit files!
+  Without it systemd uses OLD version of your file!
+
+  CUSTOM SERVICE UNIT FILE STRUCTURE:
+
+  /etc/systemd/system/myapp.service:
+
+  [Unit]
+  Description=My Custom Application
+  After=network.target
+
+  [Service]
+  Type=simple
+  User=dinesh
+  WorkingDirectory=/opt/myapp
+  ExecStart=/opt/myapp/start.sh
+  Restart=on-failure
+  RestartSec=5
+  StandardOutput=journal
+  StandardError=journal
+
+  [Install]
+  WantedBy=multi-user.target
+
+  RESTART OPTIONS:
+  always      → restart no matter what (always running)
+  on-failure  → restart only if exits with error
+  on-abort    → restart only if killed by signal
+  no          → never restart automatically
+
+  JOURNALCTL REVISION:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  journalctl -u service             Show service logs
+  journalctl -u service -f          Follow live logs
+  journalctl -u service -n 50       Last 50 lines
+  journalctl -xe                    Recent errors with explanations
+  journalctl -b                     Current boot logs
+  journalctl -b -1                  Previous boot logs
+  journalctl -p err                 Error level only
+  journalctl -p warning             Warning and above
+  journalctl --since "1 hour ago"   Recent time-based logs
+  journalctl --since today          Today's logs
+  journalctl --disk-usage           How much space logs use
+  journalctl --vacuum-size=100M     Keep only 100MB of logs
+
+  systemd TARGETS REVISION:
+
+  TARGET                  PURPOSE
+  ------                  -------
+  poweroff.target         Shutdown system
+  rescue.target           Single user/recovery mode
+  multi-user.target       Normal server mode (no GUI)
+  graphical.target        Desktop mode (with GUI)
+  reboot.target           Reboot system
+
+  systemctl get-default   → check current default target
+  Server best practice: multi-user.target (no GUI needed!)
+
+  BOOT ANALYSIS:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  systemd-analyze               Total boot time
+  systemd-analyze blame         Time each service took to start
+  systemd-analyze critical-chain Critical path during boot
+
+---------------------------------------------------------------
+4. HANDS-ON PRACTICE SCENARIOS TODAY
+---------------------------------------------------------------
+
+  SCENARIO 1 — Process Debugging Practice:
+
+  # Find top 5 CPU consuming processes
+  ps aux --sort=-%cpu | head -6
+
+  # Find top 5 memory consuming processes
+  ps aux --sort=-%mem | head -6
+
+  # Kill process gracefully then force if needed
+  kill PID
+  sleep 5
+  kill -9 PID   # only if still running
+
+  # Monitor specific process live
+  watch -n 1 "ps aux | grep processname"
+
+  SCENARIO 2 — Package Management Practice:
+
+  # Full system update workflow
+  sudo apt update
+  apt list --upgradeable
+  sudo apt upgrade -y
+  sudo apt autoremove -y
+  sudo apt clean
+
+  # Install, verify and hold a package
+  sudo apt install nginx -y
+  systemctl status nginx
+  apt-cache policy nginx
+  sudo apt-mark hold nginx
+  apt-mark showhold
+
+  # Find which package owns a file
+  dpkg -S /usr/sbin/nginx
+  dpkg -L nginx | head -20
+
+  SCENARIO 3 — Custom Service Creation Practice:
+
+  # Create a simple test script
+  sudo mkdir -p /opt/testapp
+  sudo vim /opt/testapp/app.sh
+
+  #!/bin/bash
+  while true; do
+    echo "Service running at: $(date)" >> /var/log/testapp.log
+    sleep 30
+  done
+
+  sudo chmod +x /opt/testapp/app.sh
+
+  # Create unit file
+  sudo vim /etc/systemd/system/testapp.service
+
+  [Unit]
+  Description=Test Application Service
+  After=network.target
+
+  [Service]
+  Type=simple
+  User=dinesh
+  ExecStart=/opt/testapp/app.sh
+  Restart=on-failure
+  RestartSec=5
+  StandardOutput=journal
+  StandardError=journal
+
+  [Install]
+  WantedBy=multi-user.target
+
+  # Enable and start
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now testapp
+  systemctl status testapp
+  journalctl -u testapp -f
+
+  SCENARIO 4 — Intentional Break & Debug Practice:
+
+  # Deliberately break service (wrong ExecStart path)
+  sudo systemctl edit testapp --force
+  # Change ExecStart to wrong path
+
+  sudo systemctl daemon-reload
+  sudo systemctl restart testapp
+
+  # Debug the failure
+  systemctl status testapp         # see it failed
+  journalctl -u testapp -n 20      # see why it failed
+  journalctl -xe                   # system level errors
+
+  # Fix and restore
+  sudo systemctl edit testapp --force
+  # Fix ExecStart path back to correct one
+
+  sudo systemctl daemon-reload
+  sudo systemctl restart testapp
+  systemctl status testapp         # verify running!
+
+---------------------------------------------------------------
+5. DEBUGGING WORKFLOWS PRACTICED TODAY
+---------------------------------------------------------------
+
+  PROCESS DEBUGGING WORKFLOW:
+
+  Problem: High CPU usage
+  Step 1: top → identify which process is high
+  Step 2: ps aux --sort=-%cpu | head -10
+  Step 3: ps -p PID -o pid,ppid,cmd,%cpu,%mem
+  Step 4: strace -p PID → see what process is doing
+  Step 5: kill or renice based on findings
+
+  Problem: Out of memory
+  Step 1: free -h → check available memory
+  Step 2: ps aux --sort=-%mem | head -10
+  Step 3: Check if swap is being used (si/so in vmstat)
+  Step 4: Kill memory-heavy process or add swap
+
+  Problem: Disk full
+  Step 1: df -h → find full partition
+  Step 2: du -sh /* → find biggest directory
+  Step 3: du -sh /var/log/* → check logs
+  Step 4: journalctl --vacuum-size=100M → trim journal
+  Step 5: apt clean → clean package cache
+
+  SERVICE DEBUGGING WORKFLOW (Practiced Multiple Times):
+
+  Problem: Service failed to start
+  Step 1: systemctl status service    → see error message
+  Step 2: journalctl -u service -n 50 → see detailed logs
+  Step 3: journalctl -xe              → system level context
+  Step 4: systemctl cat service       → verify unit file
+  Step 5: Fix the issue
+  Step 6: systemctl daemon-reload     → reload unit files
+  Step 7: systemctl restart service   → restart
+  Step 8: systemctl status service    → verify running!
+
+  PACKAGE TROUBLESHOOTING WORKFLOW:
+
+  Problem: Package dependency error
+  Step 1: apt --fix-broken install
+  Step 2: dpkg --configure -a
+  Step 3: apt update
+  Step 4: apt install package again
+
+  Problem: Wrong package version installed
+  Step 1: apt-cache policy package  → see available versions
+  Step 2: apt install package=version → install specific version
+  Step 3: apt-mark hold package     → prevent future upgrades
+
+---------------------------------------------------------------
+6. KEY TAKEAWAYS FROM DAY 18
+---------------------------------------------------------------
+
+  [01] Revision days build REAL confidence. Commands that
+       felt unfamiliar days ago start feeling natural.
+       Muscle memory only comes from repeated practice!
+
+  [02] SIGTERM (15) first, SIGKILL (9) only as last resort!
+       SIGTERM lets process clean up gracefully.
+       SIGKILL forces immediate death with no cleanup.
+
+  [03] Load average > CPU core count = server struggling.
+       Check cores with nproc. Check load with uptime.
+       This is your first indicator of performance issues!
+
+  [04] Look at "available" in free -h — NOT "free" column.
+       Available = truly free for new processes.
+       Free = excludes cache which can be reclaimed anyway.
+
+  [05] apt update = refresh list ONLY (nothing installed!)
+       apt upgrade = actually installs updates.
+       Always update before upgrade. Always!
+
+  [06] apt purge > apt remove for complete uninstall.
+       remove keeps config files.
+       purge removes EVERYTHING including configs.
+
+  [07] dpkg -S /path/to/file → find which package owns file.
+       Incredibly useful for debugging unknown binaries!
+
+  [08] apt-mark hold protects critical packages in production.
+       Never run apt upgrade on production without knowing
+       exactly what will be upgraded!
+
+  [09] systemctl enable --now is your best friend.
+       Does enable AND start in one single command!
+
+  [10] daemon-reload is MANDATORY after editing unit files.
+       Without it systemd uses the OLD version. Always reload!
+
+  [11] The debug loop for services:
+       status → journalctl → fix → daemon-reload → restart → verify
+       Practice this loop until it's completely automatic!
+
+  [12] Intentionally breaking things and fixing them is the
+       BEST way to build real debugging skills. Don't just
+       read about errors — create them and solve them!
+
+===============================================================
+QUICK REFERENCE — ALL THREE TOPICS
+===============================================================
+
+  PROCESSES:
+    ps aux --sort=-%cpu       Top CPU processes
+    ps aux --sort=-%mem       Top memory processes
+    kill PID / kill -9 PID    Graceful / Force kill
+    nohup command &           Survive logout
+    free -h / df -h           RAM / Disk usage
+    vmstat 2 / iostat         Performance stats
+
+  PACKAGES:
+    apt update && apt upgrade  Update system
+    apt install pkg -y         Install
+    apt purge pkg              Complete remove
+    apt-mark hold pkg          Prevent upgrade
+    dpkg -S /path/file         Find file's package
+    apt-cache policy pkg       Check versions
+
+  systemd:
+    systemctl enable --now svc    Enable + start
+    systemctl status svc          Check status
+    systemctl daemon-reload       After editing units
+    journalctl -u svc -f          Follow live logs
+    journalctl -xe                Debug errors
+    systemctl --failed            List failed services
+
+===============================================================
+   Day 18 Complete! On to Day 19 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
