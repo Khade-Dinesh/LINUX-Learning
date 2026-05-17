@@ -1,0 +1,808 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 19
+   Topic: Linux Disk Management — Deep Dive
+          Partitioning, Filesystem, Mount, LVM, Swap
+===============================================================
+
+Author   : Dinesh
+Day      : 19 / 120
+Topic    : Disk Concepts, gdisk Partitioning, ext4/XFS/NFS
+           Filesystems, Temporary & Permanent Mount,
+           fstab, LVM (PV/VG/LV), Swap Management
+Phase    : Phase 4 — Topic 4
+Platform : Linux (Ubuntu / RHEL based)
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  Disk Concepts — The Big Picture
+  2.  Partitioning — gdisk (GPT)
+  3.  Filesystems — ext4, XFS, NFS
+  4.  Mounting — Temporary & Permanent
+  5.  /etc/fstab — Permanent Mount Config
+  6.  LVM — Logical Volume Manager
+  7.  Swap Management
+  8.  Real World DevOps Scenarios
+  9.  Key Takeaways from Day 19
+
+---------------------------------------------------------------
+1. DISK CONCEPTS — THE BIG PICTURE
+---------------------------------------------------------------
+
+  HOW STORAGE WORKS IN LINUX:
+
+  Physical Disk (raw hardware)
+        ↓
+  Partition Table (MBR or GPT)
+        ↓
+  Partitions (/dev/sda1, /dev/sda2)
+        ↓
+  Filesystem (ext4, XFS, NFS)
+        ↓
+  Mount Point (/home, /var, /data)
+        ↓
+  Files & Directories
+
+  A raw disk is USELESS until:
+  Step 1 → Create partition table
+  Step 2 → Create partitions
+  Step 3 → Create filesystem on partition
+  Step 4 → Mount filesystem to directory
+  Step 5 → Read & write files!
+
+  DISK NAMING IN LINUX:
+
+  DEVICE          TYPE
+  ------          ----
+  /dev/sda        First SATA/SCSI disk
+  /dev/sdb        Second SATA/SCSI disk
+  /dev/sda1       First partition of first disk
+  /dev/sda2       Second partition of first disk
+  /dev/nvme0n1    First NVMe SSD disk
+  /dev/nvme0n1p1  First partition of NVMe disk
+  /dev/vda        Virtual disk (KVM/cloud)
+  /dev/xvda       Xen virtual disk (older AWS)
+
+  VIEWING DISKS & PARTITIONS:
+
+  COMMAND           WHAT IT DOES
+  -------           ------------
+  lsblk             List all block devices in tree format
+  lsblk -f          Show filesystem type and UUID
+  lsblk -o NAME,SIZE,TYPE,MOUNTPOINT  Custom output
+  fdisk -l          List all disks and partitions (old tool)
+  gdisk -l /dev/sda List GPT partition table
+  parted -l         List partitions with sizes
+  df -h             Show mounted filesystem usage
+  df -hT            Show filesystem type too
+  blkid             Show UUID and filesystem type of all devices
+  blkid /dev/sda1   Show specific partition UUID
+  cat /proc/partitions  Show all partitions from kernel
+
+  MBR vs GPT:
+
+  FEATURE           MBR                 GPT
+  -------           ---                 ---
+  Max disk size     2 TB                9.4 ZB (unlimited!)
+  Max partitions    4 primary           128 partitions
+  Boot support      BIOS                UEFI (also BIOS)
+  Backup table      No                  Yes (redundant)
+  Modern servers    No (old)            YES — use this!
+  Tool to use       fdisk               gdisk / parted
+
+---------------------------------------------------------------
+2. PARTITIONING — gdisk (GPT)
+---------------------------------------------------------------
+
+  gdisk = GPT fdisk
+  Used for creating and managing GPT partition tables.
+  Modern replacement for fdisk on new systems.
+
+  LAUNCHING gdisk:
+    gdisk /dev/sdb          → open disk for partitioning
+
+  gdisk INTERACTIVE COMMANDS:
+
+  KEY     ACTION
+  ---     ------
+  p       Print current partition table
+  n       Create new partition
+  d       Delete partition
+  t       Change partition type
+  l       List partition type codes
+  w       Write changes and exit (SAVES!)
+  q       Quit without saving
+  ?       Help — list all commands
+  i       Show detailed partition info
+  v       Verify partition table
+
+  CREATING A NEW PARTITION — STEP BY STEP:
+
+  Step 1: Launch gdisk
+    gdisk /dev/sdb
+
+  Step 2: Print existing table
+    Command: p
+
+  Step 3: Create new partition
+    Command: n
+    Partition number: (press Enter for default)
+    First sector: (press Enter for default)
+    Last sector: +10G   → creates 10GB partition
+                +500M   → creates 500MB partition
+                (Enter) → uses rest of disk
+
+  Step 4: Set partition type
+    Command: t
+    Partition number: 1
+    Type code:
+      8300 → Linux filesystem (default)
+      8200 → Linux swap
+      8e00 → Linux LVM
+      ef00 → EFI System
+      fd00 → Linux RAID
+
+  Step 5: Verify
+    Command: p   → review before saving
+
+  Step 6: Write and exit
+    Command: w   → saves to disk (IRREVERSIBLE!)
+
+  AFTER PARTITIONING:
+    partprobe /dev/sdb    → inform kernel of partition changes
+    lsblk                 → verify new partition visible
+
+  PARTITION TYPE CODES (Common):
+
+  CODE      TYPE
+  ----      ----
+  8300      Linux filesystem
+  8200      Linux swap
+  8e00      Linux LVM ← use this for LVM!
+  ef00      EFI System Partition
+  fd00      Linux RAID
+  0700      Microsoft basic data
+
+---------------------------------------------------------------
+3. FILESYSTEMS — ext4, XFS, NFS
+---------------------------------------------------------------
+
+  A filesystem organizes how data is stored on a partition.
+  Without filesystem → partition is just empty space!
+
+  CREATING FILESYSTEMS:
+
+  COMMAND                       WHAT IT DOES
+  -------                       ------------
+  mkfs.ext4 /dev/sdb1           Create ext4 filesystem
+  mkfs.xfs /dev/sdb1            Create XFS filesystem
+  mkfs.ext4 -L "mydata" /dev/sdb1  Create with label
+  mkfs.ext4 -m 1 /dev/sdb1     Reserve only 1% for root
+  mkswap /dev/sdb2              Create swap filesystem
+
+  FILESYSTEM TYPES:
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ ext4 — Fourth Extended Filesystem                        │
+  ├──────────────────────────────────────────────────────────┤
+  │ Default on Ubuntu, Debian, most Linux systems            │
+  │ Journaling support — recovers from crashes safely        │
+  │ Max file size: 16TB | Max volume: 1EB                    │
+  │ Reliable, well tested, great all-round choice            │
+  │ Best for: general purpose servers, home dirs, boot       │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ XFS — High Performance Filesystem                        │
+  ├──────────────────────────────────────────────────────────┤
+  │ Default on RHEL, CentOS, Rocky Linux                     │
+  │ Excellent performance with large files                   │
+  │ Max file size: 8EB | Max volume: 8EB                     │
+  │ Great for: databases, media servers, high throughput     │
+  │ NOTE: Cannot shrink XFS — only grow!                     │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ NFS — Network File System                                │
+  ├──────────────────────────────────────────────────────────┤
+  │ NOT a local filesystem — network shared storage!         │
+  │ Server shares directory → clients mount over network     │
+  │ Multiple servers can access same storage                 │
+  │ Used in: Kubernetes, shared environments, clusters       │
+  │ Files look local but actually live on remote server!     │
+  └──────────────────────────────────────────────────────────┘
+
+  FILESYSTEM COMPARISON:
+
+  FEATURE         ext4            XFS             NFS
+  -------         ----            ---             ---
+  Type            Local           Local           Network
+  Default on      Ubuntu          RHEL            Both
+  Performance     Good            Excellent       Network dependent
+  Large files     Good            Excellent       Depends on server
+  Shrink volume   YES             NO              N/A
+  Journaling      YES             YES             Server side
+  Best for        General use     High perf/data  Shared storage
+
+  CHECKING FILESYSTEM:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  fsck /dev/sdb1        Check & repair filesystem (unmounted!)
+  e2fsck /dev/sdb1      Check ext4 filesystem
+  xfs_repair /dev/sdb1  Repair XFS filesystem
+  dumpe2fs /dev/sdb1    Show ext4 detailed info
+  xfs_info /dev/sdb1    Show XFS detailed info
+  tune2fs -l /dev/sdb1  Show ext4 superblock info
+
+  NFS SERVER SETUP:
+
+  # On NFS Server:
+  apt install nfs-kernel-server -y
+
+  # Edit exports file
+  vim /etc/exports
+  /shared/data  192.168.1.0/24(rw,sync,no_subtree_check)
+
+  # Apply exports
+  exportfs -ra
+  systemctl restart nfs-kernel-server
+
+  # On NFS Client:
+  apt install nfs-common -y
+  mount -t nfs server-ip:/shared/data /mnt/nfs
+
+---------------------------------------------------------------
+4. MOUNTING — TEMPORARY & PERMANENT
+---------------------------------------------------------------
+
+  WHAT IS MOUNTING?
+  Making a filesystem accessible at a specific directory path.
+  The directory where filesystem attaches = Mount Point.
+
+  TEMPORARY MOUNT (mount command):
+  → Works immediately
+  → Lost after reboot!
+  → Good for testing before making permanent
+
+  TEMPORARY MOUNT COMMANDS:
+
+  COMMAND                               WHAT IT DOES
+  -------                               ------------
+  mount /dev/sdb1 /mnt/data            Mount partition
+  mount -t ext4 /dev/sdb1 /mnt/data    Mount with filesystem type
+  mount -t xfs /dev/sdb1 /mnt/data     Mount XFS partition
+  mount -o ro /dev/sdb1 /mnt/data      Mount read-only
+  mount -o rw,noexec /dev/sdb1 /mnt    Mount with options
+  mount -t nfs server:/path /mnt/nfs   Mount NFS share
+  mount UUID="xxx" /mnt/data           Mount by UUID
+  mount -a                             Mount all in /etc/fstab
+
+  UNMOUNTING:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  umount /mnt/data      Unmount by mount point
+  umount /dev/sdb1      Unmount by device
+  umount -f /mnt/data   Force unmount
+  umount -l /mnt/data   Lazy unmount (when busy)
+  lsof /mnt/data        Find processes using mount point
+
+  ERROR: "target is busy" when unmounting:
+  → Some process is using the mount point
+  → lsof /mnt/data   → find which process
+  → kill process → then unmount
+
+  VIEWING MOUNTS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  mount                 Show all current mounts
+  mount | grep sdb      Filter specific device
+  df -h                 Show mounted filesystems + usage
+  df -hT                Show with filesystem type
+  findmnt               Tree view of all mounts
+  findmnt /mnt/data     Show specific mount info
+  cat /proc/mounts      Kernel view of current mounts
+
+  MOUNT OPTIONS:
+
+  OPTION        MEANING
+  ------        -------
+  rw            Read-write (default)
+  ro            Read-only
+  noexec        Cannot execute binaries
+  nosuid        Ignore SUID/SGID bits
+  nodev         No device files
+  sync          Synchronous I/O
+  async         Asynchronous I/O (faster)
+  user          Allow normal users to mount
+  auto          Mount automatically with -a
+  noauto        Do not mount with mount -a
+  defaults      rw,suid,dev,exec,auto,nouser,async
+
+---------------------------------------------------------------
+5. /etc/fstab — PERMANENT MOUNT CONFIG
+---------------------------------------------------------------
+
+  fstab = filesystem table
+  Controls what gets mounted at boot automatically!
+
+  LOCATION: /etc/fstab
+  WARNING: Wrong entry in fstab can prevent system from booting!
+
+  FSTAB FORMAT:
+  device    mountpoint    fstype    options    dump    pass
+
+  FIELD EXPLANATION:
+
+  FIELD         VALUES              MEANING
+  -----         ------              -------
+  device        UUID=xxx            Device identifier
+                /dev/sdb1           (use UUID — safer!)
+  mountpoint    /data               Where to mount
+  fstype        ext4, xfs, nfs      Filesystem type
+  options       defaults, ro, rw    Mount options
+  dump          0 or 1              Backup (0=no, 1=yes)
+  pass          0, 1, or 2          fsck order (0=skip)
+
+  EXAMPLE fstab ENTRIES:
+
+  # Root filesystem
+  UUID=abc123  /          ext4   defaults          1  1
+
+  # Data partition
+  UUID=def456  /data      ext4   defaults          0  2
+
+  # XFS partition
+  UUID=ghi789  /var/data  xfs    defaults          0  2
+
+  # Read-only partition
+  UUID=jkl012  /backup    ext4   ro,defaults       0  2
+
+  # NFS mount
+  server:/shared  /mnt/nfs  nfs  defaults,_netdev  0  0
+
+  # Swap partition
+  UUID=mno345  none       swap   sw                0  0
+
+  GETTING UUID (Always use UUID not /dev/sdb1!):
+    blkid                     → show all UUIDs
+    blkid /dev/sdb1           → specific partition UUID
+    lsblk -f                  → show UUIDs in tree
+
+  WHY UUID NOT DEVICE NAME?
+  → /dev/sdb1 can change if you add/remove disks!
+  → UUID is permanent — never changes for that partition
+  → UUID = safe for fstab, device names = risky!
+
+  TESTING fstab BEFORE REBOOT:
+    mount -a              → mount everything in fstab
+                          → if error shows = fix before reboot!
+    systemctl daemon-reload
+
+  PASS FIELD VALUES:
+  0 → skip fsck check entirely
+  1 → check first (only for root /)
+  2 → check after root (for other partitions)
+
+---------------------------------------------------------------
+6. LVM — LOGICAL VOLUME MANAGER
+---------------------------------------------------------------
+
+  WHAT IS LVM?
+  LVM adds a flexible abstraction layer between
+  physical disks and filesystems.
+
+  WHY LVM?
+  Traditional partition: run out of space = BIG problem
+  LVM: run out of space = just extend! No downtime!
+
+  LVM ARCHITECTURE:
+
+  Physical Disks (/dev/sdb, /dev/sdc)
+        ↓
+  Physical Volumes — PV (/dev/sdb, /dev/sdc)
+        ↓
+  Volume Group — VG (combines multiple PVs into pool)
+        ↓
+  Logical Volumes — LV (carved from VG pool)
+        ↓
+  Filesystem (ext4, XFS on top of LV)
+        ↓
+  Mount Point (/data, /home, /var)
+
+  PHYSICAL VOLUME (PV) COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  pvcreate /dev/sdb1    Initialize partition as PV
+  pvcreate /dev/sdb     Initialize entire disk as PV
+  pvdisplay             Show all PV details
+  pvdisplay /dev/sdb1   Show specific PV details
+  pvs                   Short summary of PVs
+  pvscan                Scan for all PVs
+  pvremove /dev/sdb1    Remove PV (after removing from VG)
+
+  VOLUME GROUP (VG) COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  vgcreate myvg /dev/sdb1           Create VG with one PV
+  vgcreate myvg /dev/sdb1 /dev/sdc1 Create VG with multiple PVs
+  vgdisplay                         Show all VG details
+  vgdisplay myvg                    Show specific VG
+  vgs                               Short VG summary
+  vgextend myvg /dev/sdd1           Add PV to existing VG
+  vgreduce myvg /dev/sdb1           Remove PV from VG
+  vgrename myvg newvgname           Rename volume group
+  vgremove myvg                     Delete volume group
+
+  LOGICAL VOLUME (LV) COMMANDS:
+
+  COMMAND                           WHAT IT DOES
+  -------                           ------------
+  lvcreate -L 10G -n datalv myvg    Create 10GB LV
+  lvcreate -l 100%FREE -n datalv myvg  Use all free space
+  lvcreate -l 50%VG -n datalv myvg  Use 50% of VG
+  lvdisplay                         Show all LV details
+  lvdisplay /dev/myvg/datalv        Show specific LV
+  lvs                               Short LV summary
+  lvscan                            Scan for all LVs
+  lvrename myvg oldname newname     Rename LV
+  lvremove /dev/myvg/datalv         Delete LV
+
+  EXTENDING LV (Adding Space — Zero Downtime!):
+
+  Step 1: Add new disk as PV (if needed)
+    pvcreate /dev/sdd1
+
+  Step 2: Add PV to VG
+    vgextend myvg /dev/sdd1
+
+  Step 3: Extend LV
+    lvextend -L +5G /dev/myvg/datalv      → add 5GB
+    lvextend -l +100%FREE /dev/myvg/datalv → use all free
+
+  Step 4: Resize filesystem (while mounted!)
+    resize2fs /dev/myvg/datalv    → ext4 (online resize!)
+    xfs_growfs /mountpoint        → XFS (online resize!)
+
+  REDUCING LV (Shrinking — BE CAREFUL!):
+
+  Note: XFS CANNOT be shrunk! Only ext4 can shrink.
+
+  Step 1: Unmount filesystem
+    umount /data
+
+  Step 2: Check filesystem
+    e2fsck -f /dev/myvg/datalv
+
+  Step 3: Resize filesystem FIRST
+    resize2fs /dev/myvg/datalv 8G
+
+  Step 4: Reduce LV
+    lvreduce -L 8G /dev/myvg/datalv
+
+  Step 5: Remount
+    mount /dev/myvg/datalv /data
+
+  LVM SNAPSHOTS:
+
+  COMMAND                                   WHAT IT DOES
+  -------                                   ------------
+  lvcreate -L 2G -s -n snap /dev/myvg/datalv  Create snapshot
+  lvdisplay /dev/myvg/snap                  Check snapshot
+  mount /dev/myvg/snap /mnt/snapshot        Mount snapshot
+  lvremove /dev/myvg/snap                   Delete snapshot
+
+  USE CASE: Take snapshot before risky operations!
+  If something goes wrong → restore from snapshot!
+
+  COMPLETE LVM SETUP EXAMPLE:
+
+  # Step 1: Create partitions with gdisk (type 8e00)
+  gdisk /dev/sdb    → n → 8e00 → w
+
+  # Step 2: Create Physical Volume
+  pvcreate /dev/sdb1
+  pvs
+
+  # Step 3: Create Volume Group
+  vgcreate datavg /dev/sdb1
+  vgs
+
+  # Step 4: Create Logical Volume
+  lvcreate -L 8G -n datalv datavg
+  lvs
+
+  # Step 5: Create filesystem
+  mkfs.ext4 /dev/datavg/datalv
+
+  # Step 6: Create mount point & mount
+  mkdir -p /data
+  mount /dev/datavg/datalv /data
+
+  # Step 7: Add to fstab (permanent)
+  blkid /dev/datavg/datalv   → get UUID
+  echo "UUID=xxx /data ext4 defaults 0 2" >> /etc/fstab
+
+  # Step 8: Verify
+  df -h /data
+  lsblk
+
+---------------------------------------------------------------
+7. SWAP MANAGEMENT
+---------------------------------------------------------------
+
+  WHAT IS SWAP?
+  Swap is disk space used as virtual RAM.
+  When RAM is full → Linux moves inactive pages to swap.
+  Prevents out-of-memory (OOM) crashes!
+
+  SWAP vs RAM:
+  → RAM is fast (nanoseconds)
+  → Swap is slow (milliseconds — disk speed)
+  → Swap is safety net, NOT a RAM replacement!
+  → Heavy swap usage = performance problem!
+
+  SWAP SIZE RECOMMENDATIONS:
+
+  RAM SIZE        SWAP SIZE
+  --------        ---------
+  Less than 2GB   2x RAM
+  2GB - 8GB       Equal to RAM
+  8GB - 64GB      Half of RAM (minimum 8GB)
+  Over 64GB       Depends on workload
+
+  METHOD 1 — SWAP PARTITION:
+
+  Step 1: Create partition with gdisk (type 8200)
+    gdisk /dev/sdb → n → 8200 → w
+
+  Step 2: Create swap filesystem
+    mkswap /dev/sdb2
+
+  Step 3: Enable swap
+    swapon /dev/sdb2
+
+  Step 4: Verify
+    swapon --show
+    free -h
+
+  Step 5: Make permanent (add to fstab)
+    UUID=xxx  none  swap  sw  0  0
+
+  METHOD 2 — SWAP FILE (More Flexible!):
+
+  Step 1: Create swap file
+    fallocate -l 2G /swapfile     → create 2GB file
+    dd if=/dev/zero of=/swapfile bs=1M count=2048  → alternative
+
+  Step 2: Set correct permissions
+    chmod 600 /swapfile           → MUST be 600!
+
+  Step 3: Create swap filesystem
+    mkswap /swapfile
+
+  Step 4: Enable swap
+    swapon /swapfile
+
+  Step 5: Verify
+    swapon --show
+    free -h
+
+  Step 6: Make permanent (add to fstab)
+    /swapfile  none  swap  sw  0  0
+
+  SWAP COMMANDS:
+
+  COMMAND               WHAT IT DOES
+  -------               ------------
+  swapon /dev/sdb2      Enable swap partition
+  swapon /swapfile      Enable swap file
+  swapoff /dev/sdb2     Disable swap partition
+  swapoff /swapfile     Disable swap file
+  swapon --show         Show active swap spaces
+  swapon -s             Summary of swap usage
+  free -h               Show RAM and swap usage
+  vmstat 1              Monitor swap activity (si/so columns)
+  cat /proc/swaps       Show active swap from kernel
+
+  SWAPPINESS:
+    cat /proc/sys/vm/swappiness    → check current value (default 60)
+    sysctl vm.swappiness=10        → set temporarily
+    echo "vm.swappiness=10" >> /etc/sysctl.conf  → make permanent
+
+  swappiness values:
+  0   → avoid swap as much as possible
+  10  → use swap only when really necessary (recommended for servers)
+  60  → default (desktop systems)
+  100 → use swap aggressively
+
+---------------------------------------------------------------
+8. REAL WORLD DEVOPS SCENARIOS
+---------------------------------------------------------------
+
+  SCENARIO 1 — Add New Disk to Server:
+
+  # Check new disk appeared
+  lsblk
+
+  # Partition with gdisk
+  gdisk /dev/sdb
+  → n → defaults → +20G → 8300 → w
+
+  # Create filesystem
+  mkfs.ext4 /dev/sdb1
+
+  # Mount temporarily to test
+  mkdir -p /data
+  mount /dev/sdb1 /data
+  df -h /data
+
+  # Make permanent
+  blkid /dev/sdb1
+  echo "UUID=xxx /data ext4 defaults 0 2" >> /etc/fstab
+  mount -a     → test fstab entry works!
+
+  SCENARIO 2 — LVM Extend When Disk Full:
+
+  # Check disk usage
+  df -h /data    → shows 95% full!
+
+  # Add new physical disk
+  pvcreate /dev/sdc
+  vgextend datavg /dev/sdc
+
+  # Extend logical volume
+  lvextend -l +100%FREE /dev/datavg/datalv
+
+  # Resize filesystem (no unmount needed!)
+  resize2fs /dev/datavg/datalv
+
+  # Verify
+  df -h /data    → shows new larger size!
+
+  SCENARIO 3 — LVM Snapshot Before Risky Operation:
+
+  # Take snapshot before major update
+  lvcreate -L 5G -s -n pre-update /dev/datavg/datalv
+
+  # Do risky operation
+  apt upgrade -y
+
+  # If something broke → restore snapshot
+  lvconvert --merge /dev/datavg/pre-update
+  reboot
+
+  SCENARIO 4 — Emergency Swap Addition:
+
+  # Server running out of memory
+  free -h    → swap usage very high!
+
+  # Add emergency swap file
+  fallocate -l 4G /emergency-swap
+  chmod 600 /emergency-swap
+  mkswap /emergency-swap
+  swapon /emergency-swap
+
+  # Verify
+  free -h    → additional swap visible!
+
+  SCENARIO 5 — NFS Shared Storage:
+
+  # NFS Server Setup
+  apt install nfs-kernel-server -y
+  mkdir -p /shared/devteam
+  chown nobody:nogroup /shared/devteam
+  chmod 777 /shared/devteam
+  echo "/shared/devteam 192.168.1.0/24(rw,sync)" >> /etc/exports
+  exportfs -ra
+  systemctl restart nfs-kernel-server
+
+  # NFS Client Mount
+  apt install nfs-common -y
+  mount -t nfs 192.168.1.10:/shared/devteam /mnt/shared
+  df -h /mnt/shared    → shows remote storage!
+
+---------------------------------------------------------------
+9. KEY TAKEAWAYS FROM DAY 19
+---------------------------------------------------------------
+
+  [01] Raw disk is useless until partitioned, formatted
+       with filesystem and mounted to a directory!
+       That 4-step process is fundamental to understand.
+
+  [02] Always use GPT (gdisk) for new disks.
+       GPT supports 2TB+ disks and 128 partitions.
+       MBR is old — limited to 2TB and 4 partitions.
+
+  [03] ext4 = reliable general purpose (Ubuntu default)
+       XFS = high performance large files (RHEL default)
+       NFS = network shared storage (multi-server access)
+
+  [04] Temporary mount (mount) → lost after reboot.
+       Permanent mount (fstab) → survives every reboot.
+       Always test with mount -a before rebooting!
+
+  [05] ALWAYS use UUID in fstab — NEVER /dev/sdb1!
+       Device names change if disks are added/removed.
+       UUIDs are permanent and unique to each filesystem.
+
+  [06] Wrong fstab entry can prevent server from booting!
+       Always test: mount -a after editing fstab.
+       Keep a backup: cp /etc/fstab /etc/fstab.backup
+
+  [07] LVM = the RIGHT way to manage storage in production.
+       Extend volumes online with zero downtime!
+       Traditional partitions cannot do this!
+
+  [08] LVM order: pvcreate → vgcreate → lvcreate → mkfs → mount
+       Remember: PV → VG → LV → filesystem → mount!
+
+  [09] After extending LV always resize the filesystem too!
+       lvextend alone is not enough — filesystem must grow!
+       ext4: resize2fs | XFS: xfs_growfs
+
+  [10] XFS CANNOT be shrunk — only extended!
+       ext4 CAN be shrunk (but unmount first!).
+       Plan XFS sizes carefully before creating!
+
+  [11] Swap file is more flexible than swap partition.
+       Can add/remove without repartitioning.
+       Set swappiness=10 on production servers!
+
+  [12] LVM snapshots before risky operations = safety net.
+       Take snapshot → do risky work → remove or restore.
+       This habit can save you from disasters!
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  DISK INFO:
+    lsblk -f                  Show all disks & filesystems
+    blkid                     Show UUID of all partitions
+    df -hT                    Disk usage with filesystem type
+    fdisk -l                  List all partitions
+
+  PARTITIONING (gdisk):
+    gdisk /dev/sdb            Open disk
+    n = new | d = delete | p = print | w = write | q = quit
+    Type codes: 8300=Linux | 8200=Swap | 8e00=LVM
+
+  FILESYSTEM:
+    mkfs.ext4 /dev/sdb1       Create ext4
+    mkfs.xfs /dev/sdb1        Create XFS
+    mkswap /dev/sdb2          Create swap
+
+  MOUNTING:
+    mount /dev/sdb1 /data     Temporary mount
+    umount /data              Unmount
+    mount -a                  Mount all in fstab
+    findmnt                   Show all mounts
+
+  LVM:
+    pvcreate /dev/sdb1        Create PV
+    vgcreate vgname /dev/sdb1 Create VG
+    lvcreate -L 10G -n lvname vgname  Create LV
+    lvextend -L +5G /dev/vg/lv   Extend LV
+    resize2fs /dev/vg/lv      Resize ext4 filesystem
+    xfs_growfs /mountpoint    Resize XFS filesystem
+    pvs / vgs / lvs           Quick summaries
+
+  SWAP:
+    fallocate -l 2G /swapfile Create swap file
+    chmod 600 /swapfile       Set permissions
+    mkswap /swapfile          Format as swap
+    swapon /swapfile          Enable swap
+    swapoff /swapfile         Disable swap
+    swapon --show             Show active swaps
+    free -h                   Check RAM + swap
+
+===============================================================
+   Day 19 Complete! On to Day 20 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
