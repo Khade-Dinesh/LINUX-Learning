@@ -1,0 +1,206 @@
+============================================================
+         DAY 23 - OSI MODEL & TCP/IP MODEL
+         Networking Fundamentals Study Notes
+============================================================
+
+------------------------------------------------------------
+PART 1: OSI MODEL (Open Systems Interconnection)
+------------------------------------------------------------
+
+>> What is the OSI Model?
+   - A conceptual framework used to understand how different
+     network protocols interact.
+   - Developed by ISO (International Organization for Standardization) in 1984.
+   - Divided into 7 layers, each with a specific role.
+
+>> The 7 Layers of OSI Model (Top to Bottom):
+
+   Layer 7 - APPLICATION LAYER
+   ----------------------------
+   - Closest to the end user.
+   - Provides network services directly to applications.
+   - Protocols: HTTP, HTTPS, FTP, SMTP, DNS, Telnet, SNMP
+   - Example: Web browser requesting a webpage.
+
+   Layer 6 - PRESENTATION LAYER
+   ------------------------------
+   - Translates data between the application and network format.
+   - Handles: Encryption, Decryption, Compression, Data Formatting
+   - Formats: JPEG, PNG, GIF, MP4, SSL/TLS
+   - Example: Encrypting a password before sending.
+
+   Layer 5 - SESSION LAYER
+   ------------------------
+   - Manages sessions/connections between applications.
+   - Establishes, maintains, and terminates connections.
+   - Protocols: NetBIOS, RPC, PPTP
+   - Example: Login session on a website.
+
+   Layer 4 - TRANSPORT LAYER
+   --------------------------
+   - Responsible for end-to-end communication and error handling.
+   - Protocols: TCP (reliable), UDP (fast, unreliable)
+   - Functions: Segmentation, Flow Control, Error Control
+   - Example: Ensuring a file is fully received without errors.
+
+   Layer 3 - NETWORK LAYER
+   ------------------------
+   - Handles logical addressing and routing of data packets.
+   - Protocols: IP, ICMP, OSPF, BGP, RIP
+   - Devices: Router
+   - Example: Finding the best path to deliver a packet.
+
+   Layer 2 - DATA LINK LAYER
+   --------------------------
+   - Provides node-to-node data transfer and error detection.
+   - Divided into: LLC (Logical Link Control) & MAC (Media Access Control)
+   - Protocols: Ethernet, Wi-Fi (802.11), PPP, ARP
+   - Devices: Switch, Bridge
+   - Example: MAC address used to send data on a LAN.
+
+   Layer 1 - PHYSICAL LAYER
+   -------------------------
+   - Deals with the physical transmission of raw binary data (bits).
+   - Includes: Cables, Hubs, Network Interface Cards (NIC)
+   - Transmission Types: Electrical signals, Light (fiber), Radio waves
+   - Example: Ethernet cable transmitting electrical signals.
+
+>> Memory Trick (Top to Bottom):
+   "All People Seem To Need Data Processing"
+   A - Application
+   P - Presentation
+   S - Session
+   T - Transport
+   N - Network
+   D - Data Link
+   P - Physical
+
+>> Memory Trick (Bottom to Top):
+   "Please Do Not Throw Sausage Pizza Away"
+
+------------------------------------------------------------
+PART 2: TCP/IP MODEL (Transmission Control Protocol / Internet Protocol)
+------------------------------------------------------------
+
+>> What is the TCP/IP Model?
+   - A practical model used in real-world networking (Internet).
+   - Developed by the US Department of Defense (DARPA) in 1970s.
+   - Has 4 layers (sometimes shown as 5 layers).
+
+>> The 4 Layers of TCP/IP Model:
+
+   Layer 4 - APPLICATION LAYER
+   ----------------------------
+   - Combines OSI Layers 5, 6, 7.
+   - Handles high-level protocols, data representation, encoding.
+   - Protocols: HTTP, HTTPS, FTP, SMTP, DNS, SSH, Telnet, SNMP
+   - Example: Browsing the web, sending an email.
+
+   Layer 3 - TRANSPORT LAYER
+   --------------------------
+   - Same as OSI Layer 4.
+   - Provides communication between hosts.
+   - Protocols: TCP, UDP
+   - TCP: Connection-oriented, reliable, ordered delivery.
+   - UDP: Connectionless, faster, no error recovery.
+   - Example: TCP for file download; UDP for video streaming.
+
+   Layer 2 - INTERNET LAYER
+   -------------------------
+   - Corresponds to OSI Layer 3 (Network Layer).
+   - Handles logical addressing and routing.
+   - Protocols: IP (IPv4/IPv6), ICMP, ARP, RARP
+   - Devices: Router
+   - Example: IP address assigned to your device.
+
+   Layer 1 - NETWORK ACCESS LAYER (Link Layer)
+   --------------------------------------------
+   - Combines OSI Layers 1 and 2.
+   - Handles physical transmission and data link protocols.
+   - Protocols: Ethernet, Wi-Fi, ARP, PPP
+   - Devices: Switch, Hub, NIC
+   - Example: Data sent over Ethernet cable in your local network.
+
+------------------------------------------------------------
+PART 3: OSI vs TCP/IP MODEL - COMPARISON
+------------------------------------------------------------
+
+   Feature            | OSI Model          | TCP/IP Model
+   -------------------|--------------------|-------------------
+   Layers             | 7 Layers           | 4 Layers
+   Developed by       | ISO                | US DoD (DARPA)
+   Usage              | Conceptual/Reference| Practical/Real-world
+   Protocol-specific  | No                 | Yes
+   Approach           | Generic            | Protocol-based
+   Transport Layer    | TCP, UDP           | TCP, UDP
+   Session/Presentation| Separate Layers   | Merged in Application
+   Physical Layer     | Separate Layer     | Merged in Network Access
+
+------------------------------------------------------------
+PART 4: TCP vs UDP
+------------------------------------------------------------
+
+   Feature            | TCP                        | UDP
+   -------------------|----------------------------|---------------------
+   Connection         | Connection-oriented         | Connectionless
+   Reliability        | Reliable (ACK)             | Unreliable
+   Speed              | Slower                     | Faster
+   Error Checking     | Yes                        | Minimal
+   Order of Packets   | Maintained                 | Not guaranteed
+   Use Case           | File transfer, Web, Email  | Video, Gaming, DNS
+   Protocols using it | HTTP, FTP, SMTP            | DNS, DHCP, VoIP
+
+------------------------------------------------------------
+PART 5: KEY PROTOCOLS SUMMARY
+------------------------------------------------------------
+
+   Protocol  | Layer           | Purpose
+   ----------|-----------------|-----------------------------------
+   HTTP/HTTPS| Application     | Web browsing
+   FTP       | Application     | File transfer
+   SMTP      | Application     | Sending emails
+   DNS       | Application     | Domain name to IP resolution
+   DHCP      | Application     | Assigns IP addresses automatically
+   SSH       | Application     | Secure remote login
+   TCP       | Transport       | Reliable data delivery
+   UDP       | Transport       | Fast data delivery (no guarantee)
+   IP        | Network/Internet| Logical addressing & routing
+   ICMP      | Network/Internet| Error reporting (used by ping)
+   ARP       | Data Link       | IP to MAC address resolution
+   Ethernet  | Data Link       | LAN communication
+   Wi-Fi     | Physical/Data   | Wireless communication
+
+------------------------------------------------------------
+PART 6: HOW DATA FLOWS (Encapsulation)
+------------------------------------------------------------
+
+   When data is sent over a network:
+
+   Application Layer  -->  Data
+   Transport Layer    -->  Segment (TCP) / Datagram (UDP)
+   Network Layer      -->  Packet
+   Data Link Layer    -->  Frame
+   Physical Layer     -->  Bits (0s and 1s)
+
+   >> At the receiver's end, the reverse process is called
+      DE-ENCAPSULATION (unwrapping each layer).
+
+------------------------------------------------------------
+PART 7: QUICK REVISION NOTES
+------------------------------------------------------------
+
+   * OSI = 7 layers (conceptual), TCP/IP = 4 layers (practical)
+   * TCP = reliable, connection-oriented
+   * UDP = fast, connectionless
+   * IP address works at Layer 3 (Network)
+   * MAC address works at Layer 2 (Data Link)
+   * HTTP = Port 80 | HTTPS = Port 443
+   * FTP = Port 21 | SSH = Port 22
+   * DNS = Port 53 | SMTP = Port 25
+   * Ping uses ICMP protocol
+   * ARP resolves IP to MAC address
+
+------------------------------------------------------------
+END OF DAY 23 NOTES
+Study Hard! Keep Learning!
+------------------------------------------------------------
