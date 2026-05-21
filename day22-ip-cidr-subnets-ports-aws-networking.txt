@@ -1,0 +1,729 @@
+===============================================================
+   120 DAYS OF DEVOPS — DAY 22
+   Topic: IP Addressing, CIDR, Subnets, Ports
+          & AWS Networking Deep Dive
+===============================================================
+
+Author   : Dinesh
+Day      : 22 / 120
+Topic    : IP Addresses, CIDR, Subnetting,
+           Ports, Protocols, AWS VPC Networking
+Phase    : Phase 5 — Networking for DevOps
+Platform : Linux + AWS Cloud
+
+===============================================================
+TABLE OF CONTENTS
+===============================================================
+
+  1.  IP Addresses — Deep Dive
+  2.  CIDR — Deep Dive
+  3.  Subnetting — Deep Dive
+  4.  Ports & Protocols — Deep Dive
+  5.  AWS Networking Analysis
+  6.  AWS VPC Components Deep Dive
+  7.  Security Groups vs Network ACL
+  8.  Real World AWS Networking Scenarios
+  9.  Key Takeaways from Day 22
+
+---------------------------------------------------------------
+1. IP ADDRESSES — DEEP DIVE
+---------------------------------------------------------------
+
+  What is an IP Address?
+  A unique numerical label assigned to every device
+  on a network. Like a home address for your computer.
+
+  Without IP → devices cannot find each other on network!
+
+  IPv4 FORMAT:
+  Four octets separated by dots.
+  Each octet = 8 bits = value 0 to 255
+
+  Example: 192.168.1.100
+
+  192      .168      .1        .100
+  11000000  10101000  00000001  01100100
+  (8 bits)  (8 bits)  (8 bits)  (8 bits)
+  ←──────────── 32 bits total ────────────→
+
+  IP ADDRESS CLASSES (Old System):
+
+  CLASS   RANGE                   DEFAULT MASK    HOSTS
+  -----   -----                   ------------    -----
+  A       1.0.0.0 - 126.255.255.255   /8         16M
+  B       128.0.0.0 - 191.255.255.255 /16        65K
+  C       192.0.0.0 - 223.255.255.255 /24        254
+  D       224.0.0.0 - 239.255.255.255 Multicast
+  E       240.0.0.0 - 255.255.255.255 Reserved
+
+  Note: Class-based system is OLD. CIDR replaced it!
+
+  PRIVATE IP RANGES (RFC 1918):
+  NOT routable on public internet — safe for internal use!
+
+  RANGE                           CIDR            CLASS
+  -----                           ----            -----
+  10.0.0.0 - 10.255.255.255       10.0.0.0/8      A
+  172.16.0.0 - 172.31.255.255     172.16.0.0/12   B
+  192.168.0.0 - 192.168.255.255   192.168.0.0/16  C
+
+  SPECIAL IP ADDRESSES:
+
+  IP ADDRESS          PURPOSE
+  ----------          -------
+  127.0.0.1           Loopback (localhost — yourself!)
+  0.0.0.0             All interfaces / unspecified
+  0.0.0.0/0           All traffic (default route)
+  255.255.255.255     Broadcast to all on network
+  169.254.x.x         APIPA — no DHCP found (link-local)
+
+  PUBLIC vs PRIVATE IP:
+
+  FEATURE         PUBLIC IP           PRIVATE IP
+  -------         ---------           ----------
+  Routable        YES (internet)      NO (internal only)
+  Unique          Globally unique     Unique per network
+  Assigned by     ISP / Cloud         Admin / DHCP
+  Visible on      Internet            Local network only
+  AWS example     EC2 elastic IP      VPC subnet IP
+  Cost            Sometimes paid      Free
+
+  STATIC vs DYNAMIC IP:
+
+  STATIC IP:
+  → Never changes
+  → Manually configured
+  → Used for servers, databases
+  → AWS Elastic IP = static public IP
+
+  DYNAMIC IP:
+  → Changes on reconnect
+  → Assigned by DHCP automatically
+  → Used for regular devices
+
+  IPv4 vs IPv6:
+
+  FEATURE         IPv4                IPv6
+  -------         ----                ----
+  Format          192.168.1.1         2001:db8::1
+  Bits            32 bits             128 bits
+  Addresses       4.3 billion         340 undecillion
+  Notation        Decimal dots        Hexadecimal colons
+  NAT needed      Yes (shortage)      No (enough addresses)
+  Status          Current standard    Growing adoption
+  AWS support     Yes                 Yes (dual stack)
+
+---------------------------------------------------------------
+2. CIDR — DEEP DIVE
+---------------------------------------------------------------
+
+  CIDR = Classless Inter-Domain Routing
+  Replaced old class-based system.
+  Allows flexible allocation of IP address blocks.
+
+  FORMAT: x.x.x.x/prefix
+  Example: 10.0.0.0/16
+
+  THE PREFIX NUMBER:
+  → Tells how many bits are FIXED (network part)
+  → Remaining bits are FREE (host part)
+  → Bigger prefix = smaller network = fewer hosts
+  → Smaller prefix = bigger network = more hosts
+
+  CALCULATING ADDRESSES:
+
+  Formula: Total addresses = 2^(32 - prefix)
+  Usable hosts = Total - 2
+
+  Why subtract 2?
+  → First address = Network address (identifies network)
+  → Last address = Broadcast address (sends to all)
+  → These 2 cannot be assigned to devices!
+
+  EXAMPLES:
+
+  CIDR          PREFIX  HOST BITS  TOTAL     USABLE
+  ----          ------  ---------  -----     ------
+  10.0.0.0/8     8       24       16777216   16777214
+  10.0.0.0/16    16      16       65536      65534
+  10.0.0.0/24    24      8        256        254
+  10.0.0.0/25    25      7        128        126
+  10.0.0.0/26    26      6        64         62
+  10.0.0.0/27    27      5        32         30
+  10.0.0.0/28    28      4        16         14
+  10.0.0.0/29    29      3        8          6
+  10.0.0.0/30    30      2        4          2
+  10.0.0.0/32    32      0        1          1 (host route)
+
+  SUBNET MASK vs CIDR:
+
+  CIDR    SUBNET MASK         BINARY
+  ----    -----------         ------
+  /8      255.0.0.0           11111111.00000000.00000000.00000000
+  /16     255.255.0.0         11111111.11111111.00000000.00000000
+  /24     255.255.255.0       11111111.11111111.11111111.00000000
+  /25     255.255.255.128     11111111.11111111.11111111.10000000
+  /26     255.255.255.192     11111111.11111111.11111111.11000000
+  /28     255.255.255.240     11111111.11111111.11111111.11110000
+  /30     255.255.255.252     11111111.11111111.11111111.11111100
+  /32     255.255.255.255     11111111.11111111.11111111.11111111
+
+  READING CIDR RANGE:
+
+  Example: 10.0.1.0/24
+  Network address:   10.0.1.0    (cannot assign)
+  First usable:      10.0.1.1
+  Last usable:       10.0.1.254
+  Broadcast:         10.0.1.255  (cannot assign)
+  Total usable:      254 hosts
+
+  Example: 10.0.0.0/16
+  Network address:   10.0.0.0
+  First usable:      10.0.0.1
+  Last usable:       10.0.255.254
+  Broadcast:         10.0.255.255
+  Total usable:      65,534 hosts
+
+  SUPERNETTING — Combining Networks:
+
+  10.0.0.0/24 + 10.0.1.0/24 + 10.0.2.0/24 + 10.0.3.0/24
+  Can be summarized as: 10.0.0.0/22  (1024 addresses)
+
+---------------------------------------------------------------
+3. SUBNETTING — DEEP DIVE
+---------------------------------------------------------------
+
+  What is Subnetting?
+  Dividing a large network into smaller sub-networks.
+  Each subnet is a separate broadcast domain.
+
+  WHY SUBNET?
+  → Better security (isolate sensitive resources)
+  → Better performance (less broadcast traffic)
+  → Better organization (group by function/team)
+  → Efficient IP usage (allocate only what needed)
+  → Required for AWS multi-AZ high availability!
+
+  SUBNETTING EXAMPLE — AWS VPC:
+
+  VPC: 10.0.0.0/16 (65,534 usable IPs)
+
+  Divide into subnets:
+  Public  Subnet AZ-A: 10.0.1.0/24  (254 hosts)
+  Public  Subnet AZ-B: 10.0.2.0/24  (254 hosts)
+  Private Subnet AZ-A: 10.0.10.0/24 (254 hosts)
+  Private Subnet AZ-B: 10.0.11.0/24 (254 hosts)
+  DB      Subnet AZ-A: 10.0.20.0/24 (254 hosts)
+  DB      Subnet AZ-B: 10.0.21.0/24 (254 hosts)
+
+  Remaining: thousands of IPs available for future growth!
+
+  SUBNET CALCULATION STEPS:
+
+  Step 1: Know your VPC CIDR (e.g. 10.0.0.0/16)
+  Step 2: Decide how many subnets needed
+  Step 3: Decide how many hosts per subnet
+  Step 4: Calculate appropriate prefix for subnet
+  Step 5: Assign non-overlapping ranges
+
+  IMPORTANT RULES:
+  → Subnets within VPC cannot overlap!
+  → Each subnet exists in ONE availability zone
+  → Create subnets in multiple AZs for high availability
+  → AWS reserves 5 IPs per subnet (first 4 + last 1)
+
+  AWS RESERVED IPs per subnet (10.0.1.0/24 example):
+  10.0.1.0   → Network address
+  10.0.1.1   → AWS VPC Router
+  10.0.1.2   → AWS DNS Server
+  10.0.1.3   → AWS Reserved for future use
+  10.0.1.255 → Broadcast address
+  So only 10.0.1.4 - 10.0.1.254 = 251 usable (not 254!)
+
+  PUBLIC vs PRIVATE SUBNET:
+
+  FEATURE           PUBLIC SUBNET       PRIVATE SUBNET
+  -------           -------------       --------------
+  Internet access   YES (IGW route)     NO (no IGW route)
+  Public IPs        Can have public IP  Private IPs only
+  Internet inbound  YES                 NO
+  Internet outbound YES                 Only via NAT GW
+  Used for          LB, Bastion, NAT    App, DB, Cache
+  Security level    Lower               Higher
+
+---------------------------------------------------------------
+4. PORTS & PROTOCOLS — DEEP DIVE
+---------------------------------------------------------------
+
+  What is a Port?
+  A port is a logical endpoint for network communication.
+  Ports allow one IP to run multiple services simultaneously!
+
+  IP Address = identifies the device
+  Port = identifies the specific service on that device
+
+  Example:
+  192.168.1.10:80  → web server on that IP
+  192.168.1.10:22  → SSH server on same IP
+  192.168.1.10:3306 → MySQL on same IP
+
+  PORT RANGES:
+
+  RANGE           TYPE                DESCRIPTION
+  -----           ----                -----------
+  0 - 1023        Well-known ports    Standard services (need root)
+  1024 - 49151    Registered ports    Common applications
+  49152 - 65535   Dynamic/ephemeral   Temporary client ports
+
+  WELL-KNOWN PORTS — MUST KNOW FOR DEVOPS:
+
+  PORT    PROTOCOL  SERVICE
+  ----    --------  -------
+  20      TCP       FTP data transfer
+  21      TCP       FTP control
+  22      TCP       SSH / SFTP
+  23      TCP       Telnet (insecure!)
+  25      TCP       SMTP (email sending)
+  53      UDP/TCP   DNS
+  67/68   UDP       DHCP
+  80      TCP       HTTP
+  110     TCP       POP3 (email)
+  143     TCP       IMAP (email)
+  443     TCP       HTTPS
+  465     TCP       SMTP over SSL
+  993     TCP       IMAP over SSL
+  3306    TCP       MySQL / MariaDB
+  3389    TCP       RDP (Windows Remote Desktop)
+  5432    TCP       PostgreSQL
+  5900    TCP       VNC (remote desktop)
+  6379    TCP       Redis
+  8080    TCP       HTTP alternate / Tomcat / Jenkins
+  8443    TCP       HTTPS alternate
+  9200    TCP       Elasticsearch HTTP
+  9300    TCP       Elasticsearch cluster
+  27017   TCP       MongoDB
+  2181    TCP       ZooKeeper
+  9092    TCP       Apache Kafka
+  2375    TCP       Docker daemon (unsecured!)
+  2376    TCP       Docker daemon (TLS secured)
+  6443    TCP       Kubernetes API server
+  10250   TCP       Kubernetes kubelet
+  10255   TCP       Kubernetes kubelet read-only
+  2379    TCP       etcd client (Kubernetes)
+  2380    TCP       etcd peer (Kubernetes)
+  30000-32767 TCP   Kubernetes NodePort services
+
+  COMMON DEVOPS TOOL PORTS:
+
+  TOOL            PORT
+  ----            ----
+  Jenkins         8080
+  Grafana         3000
+  Prometheus      9090
+  Kibana          5601
+  Logstash        5044
+  SonarQube       9000
+  Nexus           8081
+  GitLab          80/443
+  ArgoCD          443/80
+  Vault (HashiCorp) 8200
+
+  TCP vs UDP PORTS:
+
+  TCP PORTS:
+  → Connection established first (3-way handshake)
+  → Port stays open for session duration
+  → Both sides track connection state
+
+  UDP PORTS:
+  → No connection establishment
+  → Just send data to IP:Port
+  → Faster but no delivery guarantee
+  → DNS (53), DHCP (67/68), video streaming use UDP
+
+---------------------------------------------------------------
+5. AWS NETWORKING ANALYSIS
+---------------------------------------------------------------
+
+  AWS GLOBAL INFRASTRUCTURE:
+
+  REGION
+  → Geographic location (us-east-1, ap-south-1)
+  → Multiple AZs per region
+  → Choose region closest to users
+  → Data sovereignty requirements
+
+  AVAILABILITY ZONE (AZ)
+  → One or more physical data centers
+  → Separate power, cooling, networking
+  → Low latency connection between AZs
+  → Deploy resources across AZs for HA!
+
+  EDGE LOCATIONS
+  → CDN points of presence worldwide
+  → Used by CloudFront
+  → Much more than regions — 400+ locations
+  → Reduces latency for end users
+
+  AWS NETWORKING SERVICES OVERVIEW:
+
+  SERVICE             PURPOSE
+  -------             -------
+  VPC                 Your private network in AWS
+  Subnet              Segment of VPC network
+  Internet Gateway    Connect VPC to internet
+  NAT Gateway         Private subnet internet access
+  Route Table         Traffic routing rules
+  Security Group      EC2 instance firewall
+  Network ACL         Subnet level firewall
+  Elastic IP          Static public IP address
+  VPC Peering         Connect two VPCs
+  Transit Gateway     Hub connecting many VPCs
+  VPN Gateway         Connect on-premise to AWS
+  Direct Connect      Dedicated physical connection
+  Route 53            DNS service
+  CloudFront          CDN service
+  Elastic Load Balancer  Distribute traffic
+  API Gateway         Manage APIs
+  PrivateLink         Private service endpoints
+
+  AWS VPC FLOW LOGS:
+  → Capture info about IP traffic in VPC
+  → Can send to CloudWatch Logs or S3
+  → Used for security analysis & troubleshooting
+  → Shows accepted and rejected traffic
+
+  ENABLING VPC FLOW LOGS:
+  VPC Console → Your VPC → Flow Logs tab
+  → Create flow log → choose destination
+  → Choose filter: All / Accept / Reject
+
+---------------------------------------------------------------
+6. AWS VPC COMPONENTS DEEP DIVE
+---------------------------------------------------------------
+
+  INTERNET GATEWAY (IGW):
+
+  → Horizontally scaled, redundant, highly available
+  → Allows communication between VPC and internet
+  → Only ONE internet gateway per VPC!
+  → Attach IGW to VPC → add route in public subnet
+
+  Public subnet route table must have:
+  Destination: 0.0.0.0/0  →  Target: igw-xxxxxxxx
+
+  NAT GATEWAY:
+
+  → Allows private subnet instances to access internet
+  → Internet cannot initiate connection to private instances
+  → Lives in PUBLIC subnet (needs internet access itself!)
+  → Managed by AWS — highly available within AZ
+  → Create one per AZ for high availability!
+  → Costs money — don't leave unused NAT Gateways running!
+
+  Private subnet route table must have:
+  Destination: 0.0.0.0/0  →  Target: nat-xxxxxxxx
+
+  NAT Gateway vs NAT Instance:
+
+  FEATURE         NAT GATEWAY         NAT INSTANCE
+  -------         -----------         ------------
+  Management      AWS managed         Self managed
+  Availability    Highly available    Single point of failure
+  Bandwidth       Up to 100 Gbps      Instance type dependent
+  Maintenance     No patches needed   Requires patching
+  Cost            Higher              Lower (but more work)
+  Use             Production          Dev/test only
+
+  ELASTIC IP (EIP):
+
+  → Static public IPv4 address
+  → Remains same even when EC2 stopped/started
+  → Associated with your AWS account
+  → Costs money if NOT associated with running instance!
+  → Can be re-associated to different instances
+  → Use for: NAT Gateway, VPN, fixed IP applications
+
+  VPC PEERING:
+
+  → Direct network connection between two VPCs
+  → Traffic stays on AWS network (not internet)
+  → Can peer VPCs in different accounts or regions
+  → Not transitive! A→B and B→C does NOT mean A→C
+
+  Requires:
+  → Peering connection request + acceptance
+  → Route table entries in BOTH VPCs
+  → Security group rules to allow traffic
+
+  TRANSIT GATEWAY:
+
+  → Hub that connects multiple VPCs and on-premise
+  → Solves VPC peering complexity at scale
+  → Supports thousands of VPC connections
+  → Transitive routing (A→TGW→C works!)
+  → Use when you have many VPCs to connect
+
+---------------------------------------------------------------
+7. SECURITY GROUPS vs NETWORK ACL
+---------------------------------------------------------------
+
+  SECURITY GROUPS (SG):
+
+  → Virtual firewall at INSTANCE level
+  → Stateful (return traffic automatically allowed!)
+  → Only ALLOW rules (no deny rules)
+  → Applied to EC2, RDS, Lambda, etc.
+  → Evaluates ALL rules before deciding
+  → Changes apply immediately
+
+  SECURITY GROUP RULES FORMAT:
+
+  INBOUND RULES:
+  Type      Protocol  Port Range  Source
+  HTTP      TCP       80          0.0.0.0/0
+  HTTPS     TCP       443         0.0.0.0/0
+  SSH       TCP       22          your-ip/32
+  MySQL     TCP       3306        app-sg-id
+
+  OUTBOUND RULES:
+  Type      Protocol  Port Range  Destination
+  All       All       All         0.0.0.0/0   (default)
+
+  SG BEST PRACTICES:
+  → Never open SSH to 0.0.0.0/0 in production!
+  → Reference other SGs instead of IP ranges
+  → Separate SG per tier (web, app, db)
+  → Default SG — deny all inbound, allow all outbound
+  → Least privilege — open only what is needed
+
+  NETWORK ACL (NACL):
+
+  → Firewall at SUBNET level
+  → Stateless (must allow both inbound AND outbound!)
+  → Both ALLOW and DENY rules
+  → Rules evaluated in NUMBER ORDER (lowest first!)
+  → Applies to all instances in subnet automatically
+  → Changes may take time to propagate
+
+  NACL RULES FORMAT:
+
+  Rule #   Type    Protocol  Port     Source      Allow/Deny
+  ------   ----    --------  ----     ------      ----------
+  100      HTTP    TCP       80       0.0.0.0/0   ALLOW
+  200      HTTPS   TCP       443      0.0.0.0/0   ALLOW
+  300      SSH     TCP       22       10.0.0.0/16 ALLOW
+  *        All     All       All      0.0.0.0/0   DENY  (default)
+
+  IMPORTANT: Rule * is the default deny at end.
+  Rules are checked in order — first match wins!
+
+  SECURITY GROUP vs NACL — FULL COMPARISON:
+
+  FEATURE             SECURITY GROUP      NETWORK ACL
+  -------             --------------      -----------
+  Level               Instance level      Subnet level
+  Stateful/Stateless  Stateful            Stateless
+  Rule types          Allow only          Allow AND Deny
+  Rule evaluation     All rules           In number order
+  Default inbound     Deny all            Allow all
+  Default outbound    Allow all           Allow all
+  Association         Multiple per inst   One per subnet
+  Return traffic      Auto allowed        Must explicitly allow
+  Use case            Fine-grained control Subnet-wide rules
+
+  COMBINED USE (Best Practice):
+
+  Internet → NACL (subnet boundary) → Security Group
+  (instance boundary) → EC2 Instance
+
+  USE NACL TO:
+  → Block specific IP addresses (deny rule)
+  → Add additional subnet level security
+  → Block ranges of IPs quickly
+
+  USE SG TO:
+  → Control access to specific instances
+  → Reference other security groups
+  → Fine-grained port level control
+
+---------------------------------------------------------------
+8. REAL WORLD AWS NETWORKING SCENARIOS
+---------------------------------------------------------------
+
+  SCENARIO 1 — Standard 3-Tier VPC Setup:
+
+  VPC: 10.0.0.0/16
+
+  Public Subnets (for Load Balancer):
+  10.0.1.0/24 (AZ-a) → ALB, NAT Gateway, Bastion
+  10.0.2.0/24 (AZ-b) → ALB
+
+  Private Subnets (for App Servers):
+  10.0.10.0/24 (AZ-a) → EC2 App Servers
+  10.0.11.0/24 (AZ-b) → EC2 App Servers
+
+  DB Subnets (for Database):
+  10.0.20.0/24 (AZ-a) → RDS Primary
+  10.0.21.0/24 (AZ-b) → RDS Standby
+
+  Security Groups:
+  alb-sg:   inbound 80, 443 from 0.0.0.0/0
+  app-sg:   inbound 8080 from alb-sg only
+  db-sg:    inbound 3306 from app-sg only
+
+  SCENARIO 2 — Bastion Host Setup:
+
+  # Connect to bastion first
+  ssh -i key.pem ubuntu@<bastion-public-ip>
+
+  # From bastion connect to private instance
+  ssh -i key.pem ubuntu@<private-ip>
+
+  # OR use SSH ProxyJump (one command!)
+  ssh -J ubuntu@<bastion-ip> ubuntu@<private-ip>
+
+  # SSH config for easy access
+  Host bastion
+      HostName <bastion-public-ip>
+      User ubuntu
+      IdentityFile ~/.ssh/key.pem
+
+  Host private-server
+      HostName <private-ip>
+      User ubuntu
+      IdentityFile ~/.ssh/key.pem
+      ProxyJump bastion
+
+  # Now just:
+  ssh private-server
+
+  SCENARIO 3 — Troubleshoot Connectivity Issue:
+
+  Problem: EC2 cannot connect to internet
+
+  Step 1: Check subnet has NAT Gateway route
+          Route table → 0.0.0.0/0 → nat-xxxxxxx?
+
+  Step 2: Check Security Group outbound rules
+          Allows all outbound? or blocked?
+
+  Step 3: Check NACL rules
+          Outbound allows traffic?
+          Inbound allows return traffic? (stateless!)
+
+  Step 4: Check NAT Gateway is in public subnet
+          NAT GW subnet has IGW route?
+
+  Step 5: Check NAT Gateway has Elastic IP
+          EIP associated with NAT GW?
+
+  SCENARIO 4 — Block Specific IP with NACL:
+
+  # Add DENY rule with lower number than ALLOW rules
+  Rule 50: DENY ALL from 1.2.3.4/32
+
+  # This blocks before any allow rules!
+  # Security Groups cannot do this (no deny rules)
+
+  SCENARIO 5 — VPC Peering Setup:
+
+  VPC-A: 10.0.0.0/16 (Production)
+  VPC-B: 10.1.0.0/16 (Development)
+
+  Step 1: Create peering connection from VPC-A to VPC-B
+  Step 2: Accept peering request in VPC-B
+  Step 3: Add route in VPC-A: 10.1.0.0/16 → pcx-xxxxx
+  Step 4: Add route in VPC-B: 10.0.0.0/16 → pcx-xxxxx
+  Step 5: Update security groups to allow traffic
+
+---------------------------------------------------------------
+9. KEY TAKEAWAYS FROM DAY 22
+---------------------------------------------------------------
+
+  [01] IP address = unique identity of every device.
+       Private IPs for internal use, public for internet.
+       Always use private IPs inside VPC!
+
+  [02] CIDR prefix: smaller number = bigger network.
+       /16 = 65K hosts (VPC) | /24 = 254 hosts (subnet)
+       Plan CIDR carefully — changing later is painful!
+
+  [03] AWS reserves 5 IPs per subnet (not 2 like normal).
+       First 4 and last 1 are reserved by AWS.
+       /24 subnet in AWS = 251 usable, not 254!
+
+  [04] Always create subnets in multiple AZs!
+       Single AZ = single point of failure.
+       Multi-AZ = high availability and fault tolerance!
+
+  [05] Public subnet = route to Internet Gateway.
+       Private subnet = route to NAT Gateway.
+       The route table is what makes a subnet public or private!
+
+  [06] NAT Gateway must be in PUBLIC subnet.
+       Private subnet instances route outbound to NAT GW.
+       NAT GW = outbound only, internet cannot reach in!
+
+  [07] Security Groups are STATEFUL.
+       Allow inbound port 80 → return traffic auto allowed.
+       Network ACLs are STATELESS → must allow both ways!
+
+  [08] Security Groups have NO deny rules.
+       Network ACLs have BOTH allow AND deny rules.
+       Use NACL to block specific IP addresses!
+
+  [09] NACL rules evaluated in ORDER (lowest number first).
+       First matching rule wins — order matters!
+       Put deny rules with LOWER numbers than allow rules!
+
+  [10] Never open port 22 (SSH) to 0.0.0.0/0!
+       Use Bastion host or VPN for SSH access.
+       Restrict SSH to your specific IP or CIDR range!
+
+  [11] VPC Peering is NOT transitive.
+       A-B and B-C peered does NOT mean A can reach C.
+       Use Transit Gateway for complex multi-VPC routing!
+
+  [12] One Internet Gateway per VPC maximum.
+       One NAT Gateway per AZ for high availability.
+       One NACL per subnet (but can share across subnets).
+
+===============================================================
+QUICK REFERENCE CHEAT SHEET
+===============================================================
+
+  IP ADDRESSING:
+    Private ranges: 10.x.x.x | 172.16-31.x.x | 192.168.x.x
+    Loopback: 127.0.0.1
+    All traffic: 0.0.0.0/0
+
+  CIDR QUICK:
+    /8  = 16M hosts    /16 = 65K hosts
+    /24 = 254 hosts    /28 = 14 hosts
+    /30 = 2 hosts      /32 = 1 host (single IP)
+
+  COMMON PORTS:
+    22=SSH   80=HTTP   443=HTTPS   3306=MySQL
+    5432=PG  6379=Redis  27017=MongoDB  8080=Jenkins
+    9200=ES  9090=Prometheus  3000=Grafana
+
+  AWS VPC:
+    IGW      → connects VPC to internet
+    NAT GW   → private subnet outbound only
+    SG       → instance firewall (stateful, allow only)
+    NACL     → subnet firewall (stateless, allow+deny)
+    EIP      → static public IP
+
+  SECURITY GROUP:
+    Stateful | Allow only | All rules checked
+    Instance level | Changes immediate
+
+  NETWORK ACL:
+    Stateless | Allow + Deny | Rules in order
+    Subnet level | Must allow both directions
+
+===============================================================
+   Day 22 Complete! On to Day 23 Tomorrow! 🔥
+   GitHub: #120DaysOfDevOps
+===============================================================
