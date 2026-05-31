@@ -1,0 +1,74 @@
+Cron Practice Questions and Answers
+
+Q1. Run a script every day at 3:30 PM. Answer: 30 15 * * *
+
+Q2. Run a script every 15 minutes. Answer: /15  * * *
+
+Q3. Run a script every day at midnight (12:00 AM). Answer: 0 0 * * *
+
+Q4. Run a script every hour from 9:00 AM to 5:00 PM. Answer: 0 9-17 * *
+*
+
+Q5. Run a script every 10 minutes from midnight (12 AM) to noon (12 PM).
+Answer: /10 0-12  * *
+
+Q6. Run a script at 8:45 AM every Monday. Answer: 45 8 * * 1
+
+Q7. Run a script at 11:00 PM every Saturday and Sunday. Answer: 0 23 * *
+6,0
+
+Q8. Run a script on the 1st day of every month at 6:00 AM. Answer: 0 6
+1 * *
+
+Q9. Run a script every 30 minutes during business hours (9 AM to 6 PM).
+Answer: /30 9-18  * *
+
+Q10. Run a script every day at 9:00 AM, 1:00 PM, and 5:00 PM. Answer: 0
+9,13,17 * * *
+
+------------------------------------------------------------------------
+
+Additional Practice
+
+Q11. Run a script every day at 7:15 AM. Answer: 15 7 * * *
+
+Q12. Run a script every 5 minutes. Answer: /5  * * *
+
+Q13. Run a script every hour between 6 AM and 10 AM. Answer: 0 6-10 * *
+*
+
+Q14. Run a script every day at 10:30 PM. Answer: 30 22 * * *
+
+Q15. Run a script every 15 minutes during office hours (9 AM–5 PM).
+Answer: /15 9-17  * *
+
+Q16. Run a script every Sunday at midnight. Answer: 0 0 * * SUN
+
+Q17. Run a script at 6:00 PM on weekdays (Monday–Friday). Answer: 0
+18 * * MON-FRI
+
+Q18. Run a script on the 15th day of every month at 8:00 AM. Answer: 0 8
+15 * *
+
+Q19. Run a script every 2 hours throughout the day. Answer: 0 /2  * *
+
+Q20. Run a script every day at 8 AM, 12 PM, 4 PM, and 8 PM. Answer: 0
+8,12,16,20 * * *
+
+------------------------------------------------------------------------
+
+Bonus DevOps Questions
+
+Q21. Run a backup every day at 11:55 PM. Answer: 55 23 * * *
+
+Q22. Run a health check every 10 minutes between 8 AM and 8 PM,
+Monday–Friday. Answer: /10 8-20  * 1-5
+
+Q23. Run a cleanup job at 2:00 AM on the first day of every month.
+Answer: 0 2 1 * *
+
+Q24. Run a script every 30 minutes on Saturdays and Sundays only.
+Answer: /30  * * 6,0
+
+Q25. Run a script every minute during the first hour after midnight
+(12:00 AM–12:59 AM). Answer: * 0 * * *
