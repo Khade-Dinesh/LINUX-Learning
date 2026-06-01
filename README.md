@@ -19,7 +19,7 @@
 
 This repository documents my **day-by-day Linux learning** as part of the structured **#120DaysOfDevOps** challenge.
 
-I'm **Dinesh Khade** — a B.Sc. Computer Science graduate from Pune, on a mission to become a **DevOps Engineer**.  
+I'm **Dinesh Khade** — a B.Sc. Computer Science graduate from Beed, on a mission to become a **DevOps Engineer**.  
 Every file here represents **real terminal sessions**, real errors, and real understanding — not copy-pasted theory.
 
 | 📅 Started | 📍 Location | 🎯 Goal |
